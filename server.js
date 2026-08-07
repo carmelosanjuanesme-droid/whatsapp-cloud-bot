@@ -78,6 +78,29 @@ const HV_KEYWORDS = [
     'perfil profesional', 'hoja de trabajo', 'postulacion', 'candidato', 'aspirante', 'hv'
 ];
 
+function detectarProfesion(texto) {
+    const t = (texto || '').toLowerCase();
+    if (t.includes('electric') || t.includes('electrónic') || t.includes('electrotécn') || t.includes('liniero') || t.includes('subestacion')) {
+        return '⚡ Ingeniería Eléctrica / Electrónica';
+    }
+    if (t.includes('civil') || t.includes('arquitect') || t.includes('obra') || t.includes('plano') || t.includes('estructura')) {
+        return '🏗️ Ingeniería Civil / Obra / Arquitectura';
+    }
+    if (t.includes('admin') || t.includes('contad') || t.includes('financ') || t.includes('auxiliar') || t.includes('recursos humanos') || t.includes('rh')) {
+        return '💼 Administración / Finanzas / Contabilidad';
+    }
+    if (t.includes('sistemas') || t.includes('programad') || t.includes('software') || t.includes('tic') || t.includes('redes') || t.includes('soporte')) {
+        return '💻 Sistemas / Redes / TIC';
+    }
+    if (t.includes('tecnic') || t.includes('tecnolog') || t.includes('operar') || t.includes('mantenimiento') || t.includes('mecanic')) {
+        return '🛠️ Técnico / Tecnólogo / Mantenimiento';
+    }
+    if (t.includes('abogad') || t.includes('juridic') || t.includes('derecho') || t.includes('legal')) {
+        return '⚖️ Derecho / Asesoría Jurídica';
+    }
+    return '📋 General / Otras Profesiones';
+}
+
 let sock = null;
 
 async function connectToWhatsApp() {
@@ -181,6 +204,7 @@ async function connectToWhatsApp() {
                         const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
                         const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
                         const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
+                        const profesion = detectarProfesion(combinedDocText);
 
                         const filename = `HV_${dateStr}_${safeSender}_${safeGroup}_${cleanDoc}${ext.startsWith('.') ? ext : '.' + ext}`;
                         const filePath = path.join(hvsDir, filename);
@@ -193,6 +217,7 @@ async function connectToWhatsApp() {
                             hora: timeStr,
                             grupo: groupName,
                             remitente: senderName,
+                            profesion: profesion,
                             nombreArchivo: filename,
                             nombreOriginal: docName || 'Hoja_de_Vida.pdf',
                             descripcion: textMessage || 'Hoja de vida recibida por WhatsApp',
@@ -201,10 +226,10 @@ async function connectToWhatsApp() {
                         };
 
                         savedHvs.unshift(hvData);
-                        if (savedHvs.length > 100) savedHvs.pop();
+                        if (savedHvs.length > 200) savedHvs.pop();
 
                         io.emit('new-hv', hvData);
-                        console.log(`📄 Hoja de Vida guardada en reservorio: ${filename}`);
+                        console.log(`📄 Hoja de Vida guardada en reservorio (${profesion}): ${filename}`);
                     }
                 } catch (err) {
                     console.error('Error procesando Hoja de Vida:', err.message);

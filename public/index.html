@@ -67,15 +67,40 @@
                 </div>
             </div>
 
-            <!-- PESTAÑA NUEVA: HOJAS DE VIDA (CVs) -->
+            <!-- PESTAÑA NUEVA: HOJAS DE VIDA (CVs) CON ORGANIZADOR POR PROFESIONES Y ORDEN -->
             <div class="tab-pane" id="tab-hvs">
                 <section class="glass-card">
                     <div class="section-header">
                         <h2>📄 Reservorio Especial de Hojas de Vida (CVs)</h2>
                         <span class="event-counter" id="hvCounter">0 HVs</span>
                     </div>
-                    <p class="section-desc">Documentos PDF, Word e imágenes de Hojas de Vida capturadas automáticamente de tus chats:</p>
+                    <p class="section-desc">Documentos PDF, Word e imágenes de Hojas de Vida organizadas por profesiones, fechas y orden alfabético:</p>
                     
+                    <div class="filter-controls" style="display: flex; gap: 15px; margin: 15px 0; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 4px;">Ordenar Hojas de Vida por:</label>
+                            <select id="hvSortSelect" class="glass-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; background: rgba(30, 41, 59, 0.8); color: #fff; border: 1px solid rgba(148, 163, 184, 0.3);">
+                                <option value="profesion">🏷️ Por Profesión</option>
+                                <option value="fecha">📅 Por Fecha (Más recientes primero)</option>
+                                <option value="alfabetico">🔤 Alfabéticamente por Nombre (A-Z)</option>
+                            </select>
+                        </div>
+
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 4px;">Filtrar por Profesión:</label>
+                            <select id="hvFilterSelect" class="glass-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; background: rgba(30, 41, 59, 0.8); color: #fff; border: 1px solid rgba(148, 163, 184, 0.3);">
+                                <option value="TODAS">🌐 Todas las Profesiones</option>
+                                <option value="⚡ Ingeniería Eléctrica / Electrónica">⚡ Ingeniería Eléctrica / Electrónica</option>
+                                <option value="🏗️ Ingeniería Civil / Obra / Arquitectura">🏗️ Ingeniería Civil / Obra / Arquitectura</option>
+                                <option value="💼 Administración / Finanzas / Contabilidad">💼 Administración / Finanzas / Contabilidad</option>
+                                <option value="💻 Sistemas / Redes / TIC">💻 Sistemas / Redes / TIC</option>
+                                <option value="🛠️ Técnico / Tecnólogo / Mantenimiento">🛠️ Técnico / Tecnólogo / Mantenimiento</option>
+                                <option value="⚖️ Derecho / Asesoría Jurídica">⚖️ Derecho / Asesoría Jurídica</option>
+                                <option value="📋 General / Otras Profesiones">📋 General / Otras Profesiones</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="photos-grid" id="hvsGrid">
                         <div class="empty-state">No se han recibido Hojas de Vida en tus chats por el momento.</div>
                     </div>

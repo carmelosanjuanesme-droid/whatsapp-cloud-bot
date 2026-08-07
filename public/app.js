@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const hvsGrid = document.getElementById('hvsGrid');
     const hvCounter = document.getElementById('hvCounter');
+    const hvSortSelect = document.getElementById('hvSortSelect');
+    const hvFilterSelect = document.getElementById('hvFilterSelect');
 
     const remindersList = document.getElementById('remindersList');
     const reminderCounter = document.getElementById('reminderCounter');
@@ -28,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalPhotos = 0;
     let totalHvs = 0;
     let totalReminders = 0;
+    let currentHvsList = [];
 
     // 1. Manejo de Pestañas (Nav Tabs)
     const tabBtns = document.querySelectorAll('.tab-btn');
@@ -52,7 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (events) renderEvents(events);
         if (photos) renderPhotos(photos);
-        if (hvs) renderHvs(hvs);
+        if (hvs) {
+            currentHvsList = hvs;
+            renderHvs(currentHvsList);
+        }
         if (reminders) renderReminders(reminders);
         if (cleanupLog) renderCleanupLogs(cleanupLog);
     });
@@ -66,7 +72,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateStatusUI(data.status, data.qr);
                 if (data.events && data.events.length > 0) renderEvents(data.events);
                 if (data.photos && data.photos.length > 0) renderPhotos(data.photos);
-                if (data.hvs && data.hvs.length > 0) renderHvs(data.hvs);
+                if (data.hvs && data.hvs.length > 0) {
+                    currentHvsList = data.hvs;
+                    renderHvs(currentHvsList);
+                }
                 if (data.reminders && data.reminders.length > 0) renderReminders(data.reminders);
             }
         } catch (e) {}
@@ -78,10 +87,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Escuchar Eventos en Tiempo Real
     socket.on('new-event', (evt) => addEventToUI(evt, true));
     socket.on('new-photo', (photo) => addPhotoToUI(photo, true));
-    socket.on('new-hv', (hv) => addHvToUI(hv, true));
+    socket.on('new-hv', (hv) => {
+        currentHvsList.unshift(hv);
+        renderHvs(currentHvsList);
+    });
     socket.on('new-reminder', (rem) => addReminderToUI(rem, true));
     socket.on('new-log', (log) => addForwardLogToUI(log));
     socket.on('cleanup-completed', (report) => renderCleanupLogs([report]));
+
+    // Filtros y Ordenamiento de Hojas de Vida
+    if (hvSortSelect) hvSortSelect.addEventListener('change', () => renderHvs(currentHvsList));
+    if (hvFilterSelect) hvFilterSelect.addEventListener('change', () => renderHvs(currentHvsList));
 
     // 3. Ejecutar Limpieza de Chats Inactivos (>6 meses)
     if (btnRunCleanup) {
@@ -133,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusBadge.style.color = '#10b981';
                 qrImage.style.display = 'none';
                 spinner.style.display = 'none';
-                statusMessage.innerHTML = '✅ <strong>WhatsApp Conectado y Ejecutando los 4 Módulos.</strong>';
+                statusMessage.innerHTML = '✅ <strong>WhatsApp Conectado y Ejecutando los 5 Módulos.</strong>';
                 statusMessage.style.display = 'block';
                 statusMessage.style.color = '#10b981';
                 break;
@@ -211,18 +227,37 @@ document.addEventListener('DOMContentLoaded', () => {
         photosGrid.prepend(card);
     }
 
-    // Renderizado de Hojas de Vida (CVs)
+    // Renderizado y Clasificación Avanzada de Hojas de Vida (CVs)
     function renderHvs(hvs) {
         hvsGrid.innerHTML = '';
-        totalHvs = hvs.length;
+        
+        let filtered = [...hvs];
+
+        // 1. Filtrar por profesión si se selecciona una específica
+        const filterVal = hvFilterSelect ? hvFilterSelect.value : 'TODAS';
+        if (filterVal !== 'TODAS') {
+            filtered = filtered.filter(hv => hv.profesion === filterVal);
+        }
+
+        // 2. Ordenar lista
+        const sortVal = hvSortSelect ? hvSortSelect.value : 'profesion';
+        if (sortVal === 'profesion') {
+            filtered.sort((a, b) => (a.profesion || '').localeCompare(b.profesion || ''));
+        } else if (sortVal === 'fecha') {
+            filtered.sort((a, b) => new Date(b.fecha + ' ' + b.hora) - new Date(a.fecha + ' ' + a.hora));
+        } else if (sortVal === 'alfabetico') {
+            filtered.sort((a, b) => (a.remitente || '').localeCompare(b.remitente || ''));
+        }
+
+        totalHvs = filtered.length;
         if (hvCounter) hvCounter.textContent = `${totalHvs} HVs`;
 
-        if (hvs.length === 0) {
-            hvsGrid.innerHTML = '<div class="empty-state">No se han recibido Hojas de Vida en tus chats por el momento.</div>';
+        if (filtered.length === 0) {
+            hvsGrid.innerHTML = '<div class="empty-state">No hay Hojas de Vida registradas para esta categoría.</div>';
             return;
         }
 
-        hvs.forEach(hv => addHvToUI(hv, false));
+        filtered.forEach(hv => addHvToUI(hv, false));
     }
 
     function addHvToUI(hv, isNew = false) {
@@ -233,19 +268,22 @@ document.addEventListener('DOMContentLoaded', () => {
         card.style.padding = '16px';
         card.style.borderRadius = '12px';
         card.innerHTML = `
-            <div style="font-size: 40px; text-align: center; margin-bottom: 10px;">📄</div>
+            <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">📄</div>
             <div class="photo-info">
-                <div class="photo-title" style="color: #60a5fa; font-weight: bold;">👤 ${hv.remitente}</div>
+                <div style="font-size: 11px; font-weight: bold; padding: 4px 8px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border-radius: 6px; display: inline-block; margin-bottom: 8px;">
+                    ${hv.profesion || '📋 General'}
+                </div>
+                <div class="photo-title" style="color: #f8fafc; font-weight: 700; font-size: 16px;">👤 ${hv.remitente}</div>
                 <div class="photo-desc" style="color: #cbd5e1; font-size: 13px; margin: 6px 0;">💬 ${hv.descripcion}</div>
-                <div class="photo-meta" style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8;">
+                <div class="photo-meta" style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8; background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 6px; margin: 8px 0;">
                     <span>📌 Chat: <strong>${hv.grupo}</strong></span>
                     <span>🕒 Fecha: ${hv.fecha} ${hv.hora}</span>
                     <span>📦 Archivo: ${hv.nombreOriginal} (${hv.tamano})</span>
                 </div>
-                <a href="${hv.url}" download="${hv.nombreArchivo}" target="_blank" class="btn-download" style="display: block; text-align: center; margin-top: 12px; background: #2563eb; color: #fff; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600;">📄 Abrir / Descargar Hoja de Vida</a>
+                <a href="${hv.url}" download="${hv.nombreArchivo}" target="_blank" class="btn-download" style="display: block; text-align: center; margin-top: 10px; background: #2563eb; color: #fff; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600;">📄 Abrir / Descargar Hoja de Vida</a>
             </div>
         `;
-        hvsGrid.prepend(card);
+        hvsGrid.appendChild(card);
     }
 
     function renderReminders(reminders) {
