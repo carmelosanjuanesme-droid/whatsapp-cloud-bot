@@ -1,7 +1,13 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    downloadMediaMessage 
+} = require('@whiskeysockets/baileys');
+const pino = require('pino');
 const qrcode = require('qrcode');
 const axios = require('axios');
 const path = require('path');
@@ -19,10 +25,16 @@ const TARGET_FORWARD_CHAT_NAME = process.env.TARGET_FORWARD_CHAT_NAME || 'Gerenc
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Asegurar carpeta para descargas de fotos recibidas
+// Directorio para fotos recibidas
 const photosDir = path.join(__dirname, 'public', 'downloads', 'photos');
 if (!fs.existsSync(photosDir)) {
     fs.mkdirSync(photosDir, { recursive: true });
+}
+
+// Directorio de autenticación
+const authDir = path.join(__dirname, 'baileys_auth_info');
+if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true });
 }
 
 // Estado global de la aplicación
@@ -38,275 +50,246 @@ let forwardingRules = [
 ];
 let cleanupLog = [];
 
-// Palabras clave predeterminadas para detectar lluvias y tiempos muertos
 const WEATHER_KEYWORDS = [
     'lluvia', 'lloviendo', 'llovizna', 'tiempo muerto',
     'parado', 'suspens', 'clima', 'tormenta', 'agua', 'mixer'
 ];
 
-// Palabras clave para agendamiento de citas
 const CALENDAR_KEYWORDS = [
     'reunión', 'reunion', 'cita', 'nos vemos', 'agendar',
     'mañana a las', 'el viernes', 'el lunes', 'revisión de planos', 'compromiso'
 ];
 
-console.log('Iniciando Hub Multifuncional de WhatsApp 24/7...');
+let sock = null;
 
-// Configuración de Puppeteer para Linux Docker / Render / PC
-const puppeteerArgs = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-accelerated-2d-canvas',
-    '--no-first-run',
-    '--no-zygote',
-    '--disable-gpu'
-];
-
-const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
-    puppeteer: {
-        headless: true,
-        args: puppeteerArgs,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
-    }
-});
-
-// Eventos de estado WhatsApp
-client.on('qr', async (qr) => {
-    console.log('📌 Código QR generado con éxito. Listo para escanear.');
-    connectionStatus = 'ESPERANDO_QR';
-    try {
-        qrCodeDataUrl = await qrcode.toDataURL(qr);
-        io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
-    } catch (err) {
-        console.error('Error generando QR DataURL:', err);
-    }
-});
-
-client.on('loading_screen', (percent, message) => {
-    console.log(`⏳ Cargando WhatsApp Web: ${percent}% - ${message}`);
-    connectionStatus = `CARGANDO (${percent}%)`;
+async function connectToWhatsApp() {
+    console.log('⚡ Iniciando conexión ultraligera a WhatsApp con Baileys...');
+    connectionStatus = 'INICIALIZANDO';
     io.emit('status-update', { status: connectionStatus, qr: null });
-});
 
-client.on('auth_failure', (msg) => {
-    console.error('❌ Error de autenticación:', msg);
-    connectionStatus = 'ERROR_AUTENTICACION';
-    io.emit('status-update', { status: connectionStatus, qr: null, error: msg });
-});
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
-client.on('authenticated', () => {
-    console.log('✅ Autenticado con éxito en WhatsApp.');
-    connectionStatus = 'AUTENTICADO';
-    qrCodeDataUrl = null;
-    io.emit('status-update', { status: connectionStatus, qr: null });
-});
+    sock = makeWASocket({
+        logger: pino({ level: 'silent' }),
+        printQRInTerminal: false,
+        auth: state,
+        browser: ['WhatsApp Cloud Hub', 'Safari', '1.0.0']
+    });
 
-client.on('ready', () => {
-    console.log('🚀 Hub de WhatsApp conectado y ejecutando los 4 Módulos en la nube.');
-    connectionStatus = 'CONECTADO_24_7';
-    qrCodeDataUrl = null;
-    io.emit('status-update', { status: connectionStatus, qr: null });
-});
+    sock.ev.on('creds.update', saveCreds);
 
-client.on('disconnected', (reason) => {
-    console.log('⚠️ Cliente desconectado:', reason);
-    connectionStatus = 'DESCONECTADO';
-    qrCodeDataUrl = null;
-    io.emit('status-update', { status: connectionStatus, qr: null });
-});
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-// -------------------------------------------------------------
-// EVENTO PRINCIPAL: PROCESAMIENTO DE MENSAJES CON LOS 4 MÓDULOS
-// -------------------------------------------------------------
-client.on('message', async (msg) => {
-    try {
-        const text = msg.body ? msg.body.trim() : '';
-        const chat = await msg.getChat();
-        const contact = await msg.getContact();
-
-        const groupName = chat.isGroup ? chat.name : (contact.pushname || contact.name || msg.from);
-        const senderName = contact.pushname || contact.name || msg.from;
-
-        const now = new Date();
-        const dateStr = now.toISOString().split('T')[0];
-        const timeStr = now.toTimeString().split(' ')[0];
-
-        // ═════════════════════════════════════════════════════════
-        // MÓDULO 1: DESCARGA, RENOMBRADO Y ORGANIZACIÓN DE FOTOS
-        // ═════════════════════════════════════════════════════════
-        if (msg.hasMedia) {
+        if (qr) {
+            console.log('📌 Código QR de Baileys generado en <1 segundo. Listo para escanear.');
+            connectionStatus = 'ESPERANDO_QR';
             try {
-                const media = await msg.downloadMedia();
-                if (media && media.mimetype && media.mimetype.startsWith('image/')) {
-                    const ext = media.mimetype.split('/')[1] || 'jpg';
-                    const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
-                    const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
-                    const cleanDesc = text.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 25);
-                    
-                    const filename = `${dateStr}_${safeGroup}_${safeSender}_${cleanDesc || 'Foto'}_${Date.now()}.${ext}`;
-                    const filePath = path.join(photosDir, filename);
-
-                    fs.writeFileSync(filePath, media.data, 'base64');
-
-                    const photoRecord = {
-                        id: Date.now().toString(),
-                        fecha: dateStr,
-                        hora: timeStr,
-                        proyecto: groupName,
-                        remitente: senderName,
-                        descripcion: text || 'Sin descripción',
-                        filename: filename,
-                        url: `/downloads/photos/${filename}`
-                    };
-
-                    savedPhotos.unshift(photoRecord);
-                    if (savedPhotos.length > 100) savedPhotos.pop();
-
-                    console.log(`📷 [MÓDULO FOTOS] Foto descargada y renombrada: ${filename}`);
-                    io.emit('new-photo', photoRecord);
-                }
-            } catch (mediaErr) {
-                console.error('Error al descargar multimedia:', mediaErr.message);
+                qrCodeDataUrl = await qrcode.toDataURL(qr);
+                io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
+            } catch (err) {
+                console.error('Error convirtiendo QR a DataURL:', err);
             }
         }
 
-        if (!text) return;
-        const textLower = text.toLowerCase();
+        if (connection === 'close') {
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
+            
+            connectionStatus = 'DESCONECTADO';
+            qrCodeDataUrl = null;
+            io.emit('status-update', { status: connectionStatus, qr: null });
 
-        // ═════════════════════════════════════════════════════════
-        // MÓDULO 2: COPIA Y REENVÍO INTELIGENTE ENTRE CHATS
-        // ═════════════════════════════════════════════════════════
-        for (const rule of forwardingRules) {
-            if (rule.active && textLower.includes(rule.tag.toLowerCase())) {
-                console.log(`🔁 [MÓDULO REENVÍO] Mensaje marcado con ${rule.tag} detectado. Buscando chat destino: ${rule.target}`);
-                
-                // Buscar chat de destino
-                const allChats = await client.getChats();
-                const targetChat = allChats.find(c => c.name.toLowerCase().includes(rule.target.toLowerCase()));
-
-                if (targetChat) {
-                    const forwardContent = `📢 *[MENSAJE COPIADO AUTOMÁTICAMENTE]*\n` +
-                                           `📌 *Origen:* ${groupName}\n` +
-                                           `👤 *De:* ${senderName}\n` +
-                                           `💬 *Mensaje:* ${text}`;
-                    
-                    await client.sendMessage(targetChat.id._serialized, forwardContent);
-                    console.log(`✅ Mensaje reenganchado y enviado con éxito a: ${targetChat.name}`);
-                    
-                    io.emit('new-log', {
-                        tipo: 'REENVÍO',
-                        origen: groupName,
-                        destino: targetChat.name,
-                        mensaje: text
-                    });
-                } else {
-                    console.log(`⚠️ Chat destino "${rule.target}" no encontrado para reenvío.`);
-                }
+            if (shouldReconnect) {
+                setTimeout(connectToWhatsApp, 3000);
             }
+        } else if (connection === 'open') {
+            console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
+            connectionStatus = 'CONECTADO_24_7';
+            qrCodeDataUrl = null;
+            io.emit('status-update', { status: connectionStatus, qr: null });
         }
+    });
 
-        // ═════════════════════════════════════════════════════════
-        // MÓDULO 3: CAPTURA DE CITAS Y RECORDATORIOS
-        // ═════════════════════════════════════════════════════════
-        const isCalendarEvent = CALENDAR_KEYWORDS.some(kw => textLower.includes(kw));
-        if (isCalendarEvent) {
-            const reminderRecord = {
-                id: Date.now().toString(),
-                fechaCaptura: `${dateStr} ${timeStr}`,
-                proyecto: groupName,
-                remitente: senderName,
-                detalle: text,
-                estado: 'CAPTURADO'
-            };
-            capturedReminders.unshift(reminderRecord);
-            if (capturedReminders.length > 50) capturedReminders.pop();
+    // PROCESAMIENTO DE MENSAJES ENTRANTES (4 MÓDULOS)
+    sock.ev.on('messages.upsert', async (m) => {
+        if (m.type !== 'notify') return;
 
-            console.log(`📅 [MÓDULO CITAS] Cita/Recordatorio capturado: ${text}`);
-            io.emit('new-reminder', reminderRecord);
-        }
+        for (const msg of m.messages) {
+            if (!msg.message || msg.key.fromMe) continue;
 
-        // ═════════════════════════════════════════════════════════
-        // REGISTRO GENERAL / DE LLUVIAS (GOOGLE SHEETS)
-        // ═════════════════════════════════════════════════════════
-        const isWeatherEvent = WEATHER_KEYWORDS.some(kw => textLower.includes(kw));
-        if (isWeatherEvent) {
-            const eventData = {
-                fecha: dateStr,
-                hora: timeStr,
-                proyecto: groupName,
-                remitente: senderName,
-                mensaje: text
-            };
+            const fromJid = msg.key.remoteJid;
+            const isGroup = fromJid.endsWith('@g.us');
+            const senderJid = msg.key.participant || fromJid;
+            const senderName = msg.pushName || senderJid.split('@')[0];
+            const groupName = isGroup ? (msg.pushName || 'Grupo_WhatsApp') : senderName;
 
-            lastEvents.unshift(eventData);
-            if (lastEvents.length > 50) lastEvents.pop();
+            const textMessage = msg.message.conversation || 
+                              msg.message.extendedTextMessage?.text || 
+                              msg.message.imageMessage?.caption || 
+                              msg.message.videoMessage?.caption || '';
+            const textLower = textMessage.toLowerCase();
 
-            io.emit('new-event', eventData);
+            const now = new Date();
+            const dateStr = now.toISOString().split('T')[0];
+            const timeStr = now.toTimeString().split(' ')[0];
 
-            if (GOOGLE_WEBHOOK_URL) {
+            // 📷 MÓDULO 1: GESTIÓN Y ORGANIZACIÓN DE FOTOS
+            if (msg.message.imageMessage) {
                 try {
-                    await axios.post(GOOGLE_WEBHOOK_URL, eventData, {
-                        headers: { 'Content-Type': 'application/json' },
-                        timeout: 8000
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                    if (buffer) {
+                        const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+                        const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
+                        const cleanDesc = textMessage.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+
+                        const filename = `${dateStr}_${safeGroup}_${safeSender}_${cleanDesc || 'Foto'}_${Date.now()}.jpg`;
+                        const filePath = path.join(photosDir, filename);
+
+                        fs.writeFileSync(filePath, buffer);
+
+                        const photoData = {
+                            id: Date.now(),
+                            fecha: dateStr,
+                            hora: timeStr,
+                            grupo: groupName,
+                            remitente: senderName,
+                            descripcion: textMessage || 'Sin descripción',
+                            url: `/downloads/photos/${filename}`,
+                            nombreArchivo: filename
+                        };
+
+                        savedPhotos.unshift(photoData);
+                        if (savedPhotos.length > 50) savedPhotos.pop();
+
+                        io.emit('new-photo', photoData);
+                        console.log(`📷 Foto guardada y renombrada: ${filename}`);
+                    }
+                } catch (err) {
+                    console.error('Error procesando imagen:', err.message);
+                }
+            }
+
+            // 🌧️ REGISTRO DE EVENTOS DE CLIMA Y TIEMPOS MUERTOS
+            const hasWeatherEvent = WEATHER_KEYWORDS.some(kw => textLower.includes(kw));
+            if (hasWeatherEvent && textMessage.length > 0) {
+                const eventData = {
+                    id: Date.now(),
+                    fecha: dateStr,
+                    hora: timeStr,
+                    proyecto: groupName,
+                    remitente: senderName,
+                    mensaje: textMessage
+                };
+
+                lastEvents.unshift(eventData);
+                if (lastEvents.length > 100) lastEvents.pop();
+
+                io.emit('new-event', eventData);
+                console.log(`🌧️ Evento de clima/tiempo muerto detectado en ${groupName}`);
+
+                if (GOOGLE_WEBHOOK_URL) {
+                    axios.post(GOOGLE_WEBHOOK_URL, eventData).catch(err => {
+                        console.error('Error enviando evento a Google Sheets:', err.message);
                     });
-                    console.log('📊 Evento enviado a Google Sheets.');
-                } catch (apiErr) {
-                    console.error('Error Google Sheets Webhook:', apiErr.message);
+                }
+            }
+
+            // 📅 MÓDULO 3: CITAS Y RECORDATORIOS
+            const hasCalendarEvent = CALENDAR_KEYWORDS.some(kw => textLower.includes(kw));
+            if (hasCalendarEvent && textMessage.length > 0) {
+                const reminderData = {
+                    id: Date.now(),
+                    fechaDetec: `${dateStr} ${timeStr}`,
+                    origen: groupName,
+                    remitente: senderName,
+                    mensaje: textMessage,
+                    estado: 'Pendiente'
+                };
+
+                capturedReminders.unshift(reminderData);
+                if (capturedReminders.length > 50) capturedReminders.pop();
+
+                io.emit('new-reminder', reminderData);
+                console.log(`📅 Cita/Compromiso detectado: "${textMessage}"`);
+            }
+
+            // 🔁 MÓDULO 2: REENVÍO INTELIGENTE ENTRE CHATS
+            for (const rule of forwardingRules) {
+                if (rule.active && textLower.includes(rule.tag.toLowerCase())) {
+                    console.log(`🔁 Reenvío activado por etiqueta ${rule.tag} desde ${groupName}`);
+                    
+                    const forwardContent = `📢 *[ALERTA REENVIADA DE: ${groupName}]*\n👤 *Remitente:* ${senderName}\n\n💬 ${textMessage}`;
+                    
+                    try {
+                        const groups = await sock.groupFetchAllParticipating();
+                        let targetJid = null;
+
+                        for (const jid in groups) {
+                            if (groups[jid].subject && groups[jid].subject.toLowerCase().includes(rule.target.toLowerCase())) {
+                                targetJid = jid;
+                                break;
+                            }
+                        }
+
+                        if (targetJid) {
+                            await sock.sendMessage(targetJid, { text: forwardContent });
+                            console.log(`✅ Mensaje reenviado con éxito a ${rule.target}`);
+                        } else {
+                            console.log(`⚠️ No se encontró el chat de destino: "${rule.target}"`);
+                        }
+                    } catch (err) {
+                        console.error('Error ejecutando reenvío:', err.message);
+                    }
                 }
             }
         }
-    } catch (err) {
-        console.error('Error procesando mensaje:', err);
-    }
-});
+    });
+}
 
-// ═════════════════════════════════════════════════════════
-// MÓDULO 4: LIMPIEZA Y MANTENIMIENTO DE CHATS INACTIVOS (> 6 MESES)
-// ═════════════════════════════════════════════════════════
-async function ejecutarLimpiezaChatsInactivos(diasInactividad = 180) {
-    if (connectionStatus !== 'CONECTADO_24_7') {
-        throw new Error('WhatsApp debe estar conectado para ejecutar la limpieza.');
-    }
+// 🧹 MÓDULO 4: LIMPIEZA DE CHATS INACTIVOS (> 6 MESES)
+async function ejecutarLimpiezaChatsInactivos(diasLimite = 180) {
+    if (!sock) throw new Error('Cliente WhatsApp no inicializado');
 
-    console.log(`🧹 [MÓDULO LIMPIEZA] Iniciando escaneo de chats inactivos por más de ${diasInactividad} días...`);
-    const allChats = await client.getChats();
-    const nowMs = Date.now();
-    const maxInactivityMs = diasInactividad * 24 * 60 * 60 * 1000;
+    console.log(`🧹 Iniciando escaneo de chats inactivos por más de ${diasLimite} días...`);
+    const limiteMs = diasLimite * 24 * 60 * 60 * 1000;
+    const ahoraMs = Date.now();
 
     let procesados = 0;
     let archivados = 0;
     const detallesLimpieza = [];
 
-    for (const chat of allChats) {
-        // Ignorar chats fijados o no leídos si se desea
-        if (chat.pinned) continue;
+    try {
+        const groups = await sock.groupFetchAllParticipating();
 
-        const lastMsgTimestamp = chat.lastMessage ? (chat.lastMessage.timestamp * 1000) : 0;
+        for (const jid in groups) {
+            const group = groups[jid];
+            procesados++;
 
-        if (lastMsgTimestamp > 0 && (nowMs - lastMsgTimestamp) > maxInactivityMs) {
-            const diasDiferencia = Math.floor((nowMs - lastMsgTimestamp) / (1000 * 60 * 60 * 24));
-            const chatName = chat.name || chat.id.user;
+            const creationMs = (group.creation || 0) * 1000;
+            const antiguedadMs = ahoraMs - creationMs;
 
-            try {
-                // Archivar el chat inactivo
-                await chat.archive();
-                archivados++;
-                
-                detallesLimpieza.push({
-                    chat: chatName,
-                    diasInactivo: diasDiferencia,
-                    accion: 'ARCHIVADO',
-                    fechaUltimoMensaje: new Date(lastMsgTimestamp).toISOString().split('T')[0]
-                });
-
-                console.log(`  📦 Chat archivado por inactividad: "${chatName}" (${diasDiferencia} días sin mensajes)`);
-            } catch (cleanErr) {
-                console.error(`Error al archivar chat ${chatName}:`, cleanErr.message);
+            if (antiguedadMs > limiteMs) {
+                try {
+                    await sock.chatModify({ archive: true }, jid);
+                    archivados++;
+                    detallesLimpieza.push({
+                        nombre: group.subject,
+                        jid: jid,
+                        accion: 'Archivado por inactividad'
+                    });
+                } catch (e) {
+                    detallesLimpieza.push({
+                        nombre: group.subject,
+                        jid: jid,
+                        accion: `Error archivando: ${e.message}`
+                    });
+                }
             }
         }
-        procesados++;
+    } catch (err) {
+        console.error('Error en escaneo de grupos:', err.message);
     }
 
     const reportResult = {
@@ -323,9 +306,7 @@ async function ejecutarLimpiezaChatsInactivos(diasInactividad = 180) {
     return reportResult;
 }
 
-// -------------------------------------------------------------
-// ENDPOINTS REST PARA EL DASHBOARD Y LA API
-// -------------------------------------------------------------
+// ENDPOINTS REST
 app.get('/api/status', (req, res) => {
     res.json({
         status: connectionStatus,
@@ -358,12 +339,22 @@ app.post('/api/forwarding-rules', (req, res) => {
     res.status(400).json({ success: false, error: 'Formato de reglas inválido' });
 });
 
+// WebSocket conexiones
+io.on('connection', (socket) => {
+    socket.emit('status-update', {
+        status: connectionStatus,
+        qr: qrCodeDataUrl,
+        events: lastEvents,
+        photos: savedPhotos,
+        reminders: capturedReminders,
+        forwardingRules: forwardingRules,
+        cleanupLog: cleanupLog
+    });
+});
+
 server.listen(PORT, () => {
-    console.log(`🌐 Servidor Hub WhatsApp escuchando en puerto ${PORT}`);
-    console.log('Inicializando cliente de WhatsApp...');
-    client.initialize().catch(err => {
-        console.error('❌ Error inicializando WhatsApp:', err);
-        connectionStatus = 'ERROR_INICIALIZACION';
-        io.emit('status-update', { status: connectionStatus, qr: null, error: err.message });
+    console.log(`🌐 Servidor Hub WhatsApp (Baileys) escuchando en puerto ${PORT}`);
+    connectToWhatsApp().catch(err => {
+        console.error('❌ Error conectando a WhatsApp Baileys:', err);
     });
 });
