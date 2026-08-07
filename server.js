@@ -6,6 +6,7 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     downloadMediaMessage,
+    fetchLatestBaileysVersion,
     Browsers
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
@@ -68,13 +69,18 @@ async function connectToWhatsApp() {
     connectionStatus = 'INICIALIZANDO';
     io.emit('status-update', { status: connectionStatus, qr: null });
 
+    const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] }));
+    console.log(`📌 Versión de WhatsApp Web obtenida: v${version.join('.')}`);
+
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
     sock = makeWASocket({
+        version,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
         auth: state,
-        browser: Browsers.macOS('Desktop')
+        browser: Browsers.ubuntu('Chrome'),
+        syncFullHistory: false
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -98,6 +104,14 @@ async function connectToWhatsApp() {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
             
+            if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 428) {
+                console.log('🧹 Limpiando credenciales antiguas para permitir un escaneo fresco...');
+                try {
+                    fs.rmSync(authDir, { recursive: true, force: true });
+                    fs.mkdirSync(authDir, { recursive: true });
+                } catch (e) {}
+            }
+
             connectionStatus = 'DESCONECTADO';
             qrCodeDataUrl = null;
             io.emit('status-update', { status: connectionStatus, qr: null });
