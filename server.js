@@ -54,6 +54,7 @@ let savedPhotos = [];
 let savedHvs = [];
 let savedAudios = [];
 let capturedReminders = [];
+let savedContacts = {}; // 📱 AGENDA DE CONTACTOS SINCRONIZADA
 let forwardingRules = [
     { tag: '#urgente', target: TARGET_FORWARD_CHAT_NAME, active: true },
     { tag: '#gerencia', target: TARGET_FORWARD_CHAT_NAME, active: true },
@@ -145,7 +146,6 @@ async function guardarSesionEnNube() {
         
         fs.writeFileSync(backupFile, JSON.stringify(sessionStore));
 
-        // Persistir en MongoDB Atlas
         const db = await initMongoDB();
         if (db) {
             const collection = db.collection('session_auth');
@@ -174,7 +174,6 @@ async function restaurarSesionDesdeNube() {
     try {
         if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
 
-        // 1. Intentar restaurar desde MongoDB Atlas
         const db = await initMongoDB();
         if (db) {
             const collection = db.collection('session_auth');
@@ -188,7 +187,6 @@ async function restaurarSesionDesdeNube() {
             }
         }
 
-        // 2. Intentar restaurar desde respaldo local
         if (fs.existsSync(backupFile)) {
             const raw = fs.readFileSync(backupFile, 'utf-8');
             const sessionStore = JSON.parse(raw);
@@ -199,7 +197,6 @@ async function restaurarSesionDesdeNube() {
             return true;
         }
 
-        // 3. Intentar restaurar desde Webhook Cloud
         if (GOOGLE_WEBHOOK_URL) {
             const res = await axios.post(GOOGLE_WEBHOOK_URL, { action: 'get_session' }).catch(() => null);
             if (res && res.data && res.data.sessionData) {
@@ -366,6 +363,28 @@ async function connectToWhatsApp() {
         syncFullHistory: false
     });
 
+    // 📱 SINCRONIZACIÓN DE AGENDA DE CONTACTOS EN TIEMPO REAL
+    sock.ev.on('contacts.upsert', (contacts) => {
+        for (const c of contacts) {
+            if (c.id) {
+                savedContacts[c.id] = {
+                    id: c.id,
+                    name: c.name || c.notify || c.verifiedName || c.id.split('@')[0],
+                    notify: c.notify
+                };
+            }
+        }
+        console.log(`📱 Agenda sincronizada: ${Object.keys(savedContacts).length} contactos de WhatsApp cargados.`);
+    });
+
+    sock.ev.on('contacts.update', (updates) => {
+        for (const update of updates) {
+            if (update.id && savedContacts[update.id]) {
+                Object.assign(savedContacts[update.id], update);
+            }
+        }
+    });
+
     sock.ev.on('creds.update', async () => {
         await saveCreds();
         await guardarSesionEnNube();
@@ -430,6 +449,15 @@ async function connectToWhatsApp() {
             const senderJid = msg.key.participant || fromJid;
             const senderName = msg.pushName || senderJid.split('@')[0];
             const groupName = isGroup ? (msg.pushName || 'Grupo_WhatsApp') : senderName;
+
+            // Guardar o actualizar contacto remitente en la agenda
+            if (senderJid) {
+                savedContacts[senderJid] = {
+                    id: senderJid,
+                    name: senderName,
+                    notify: msg.pushName
+                };
+            }
 
             const textMessage = msg.message.conversation || 
                               msg.message.extendedTextMessage?.text || 
@@ -737,17 +765,34 @@ app.post('/api/send-message', async (req, res) => {
             const cleanPhone = phone.replace(/[^0-9]/g, '');
             targetJid = `${cleanPhone}@s.whatsapp.net`;
         } else if (targetName) {
-            const groups = await sock.groupFetchAllParticipating().catch(() => ({}));
-            for (const jid in groups) {
-                if (groups[jid].subject && groups[jid].subject.toLowerCase().includes(targetName.toLowerCase())) {
+            const search = targetName.toLowerCase().trim();
+
+            // 1. Buscar en la Agenda de Contactos Sincronizada por Nombre o Remitente
+            for (const jid in savedContacts) {
+                const c = savedContacts[jid];
+                const cName = (c.name || c.notify || '').toLowerCase();
+                if (cName.includes(search)) {
                     targetJid = jid;
+                    console.log(`🎯 Contacto encontrado en agenda: "${c.name}" (${jid})`);
                     break;
+                }
+            }
+
+            // 2. Buscar en Grupos Participantes
+            if (!targetJid) {
+                const groups = await sock.groupFetchAllParticipating().catch(() => ({}));
+                for (const jid in groups) {
+                    if (groups[jid].subject && groups[jid].subject.toLowerCase().includes(search)) {
+                        targetJid = jid;
+                        console.log(`🎯 Grupo encontrado: "${groups[jid].subject}" (${jid})`);
+                        break;
+                    }
                 }
             }
         }
 
         if (!targetJid) {
-            return res.status(404).json({ success: false, error: `No se encontró el chat de "${targetName || phone}". Proporciona el número con código de país.` });
+            return res.status(404).json({ success: false, error: `No se encontró el contacto o grupo "${targetName || phone}".` });
         }
 
         await sock.sendMessage(targetJid, { text: message });
@@ -768,7 +813,8 @@ app.get('/api/status', (req, res) => {
         audios: savedAudios,
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
-        cleanupLog: cleanupLog
+        cleanupLog: cleanupLog,
+        contactsCount: Object.keys(savedContacts).length
     });
 });
 
@@ -818,7 +864,8 @@ io.on('connection', (socket) => {
         audios: savedAudios,
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
-        cleanupLog: cleanupLog
+        cleanupLog: cleanupLog,
+        contactsCount: Object.keys(savedContacts).length
     });
 });
 
