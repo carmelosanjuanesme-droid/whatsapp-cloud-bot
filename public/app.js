@@ -1,15 +1,19 @@
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
-    // Elementos de la UI
+    // Elementos de la UI Full Screen
     const statusDot = document.getElementById('statusDot');
-    const statusBadge = document.getElementById('statusBadge');
+    const statusBadgeText = document.getElementById('statusBadgeText');
     const qrImage = document.getElementById('qrImage');
     const spinner = document.getElementById('spinner');
     const statusMessage = document.getElementById('statusMessage');
 
-    const eventsList = document.getElementById('eventsList');
-    const eventCounter = document.getElementById('eventCounter');
+    // KPI Contadores
+    const kpiStatus = document.getElementById('kpiStatus');
+    const kpiHvs = document.getElementById('kpiHvs');
+    const kpiAudios = document.getElementById('kpiAudios');
+    const kpiPhotos = document.getElementById('kpiPhotos');
+    const kpiReminders = document.getElementById('kpiReminders');
 
     const photosGrid = document.getElementById('photosGrid');
     const photoCounter = document.getElementById('photoCounter');
@@ -34,25 +38,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const cleanupLogsList = document.getElementById('cleanupLogsList');
     const btnRunCleanup = document.getElementById('btnRunCleanup');
 
-    let totalEvents = 0;
     let totalPhotos = 0;
     let totalHvs = 0;
     let totalAudios = 0;
     let totalReminders = 0;
     let currentHvsList = [];
 
-    // 1. Manejo de Pestañas (Nav Tabs)
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabPanes = document.querySelectorAll('.tab-pane');
+    // 1. MANEJO DE NAVEGACIÓN FULL SCREEN (SIDEBAR & BOTTOM NAV)
+    const navItems = document.querySelectorAll('.nav-item, .bottom-nav-item');
+    const hubPanes = document.querySelectorAll('.hub-pane');
 
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            tabBtns.forEach(b => b.classList.remove('active'));
-            tabPanes.forEach(p => p.classList.remove('active'));
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            const targetHub = item.dataset.hub;
 
-            btn.classList.add('active');
-            const targetPane = document.getElementById(btn.dataset.tab);
-            if (targetPane) targetPane.classList.add('active');
+            navItems.forEach(n => {
+                if (n.dataset.hub === targetHub) n.classList.add('active');
+                else n.classList.remove('active');
+            });
+
+            hubPanes.forEach(pane => {
+                if (pane.id === targetHub) pane.classList.add('active');
+                else pane.classList.remove('active');
+            });
         });
     });
 
@@ -62,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateStatusUI(status, qr);
 
-        if (events) renderEvents(events);
         if (photos) renderPhotos(photos);
         if (hvs) {
             currentHvsList = hvs;
@@ -80,7 +87,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             if (data && data.status) {
                 updateStatusUI(data.status, data.qr);
-                if (data.events && data.events.length > 0) renderEvents(data.events);
                 if (data.photos && data.photos.length > 0) renderPhotos(data.photos);
                 if (data.hvs && data.hvs.length > 0) {
                     currentHvsList = data.hvs;
@@ -96,7 +102,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(checkStatusHTTP, 3000);
 
     // Escuchar Eventos en Tiempo Real
-    socket.on('new-event', (evt) => addEventToUI(evt, true));
     socket.on('new-photo', (photo) => addPhotoToUI(photo, true));
     socket.on('new-hv', (hv) => {
         currentHvsList.unshift(hv);
@@ -112,12 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (hvFilterSelect) hvFilterSelect.addEventListener('change', () => renderHvs(currentHvsList));
 
     // Generador de Resúmenes Periódicos
-    if (btnSummaryDaily) {
-        btnSummaryDaily.addEventListener('click', () => fetchSummary('diario'));
-    }
-    if (btnSummaryWeekly) {
-        btnSummaryWeekly.addEventListener('click', () => fetchSummary('semanal'));
-    }
+    if (btnSummaryDaily) btnSummaryDaily.addEventListener('click', () => fetchSummary('diario'));
+    if (btnSummaryWeekly) btnSummaryWeekly.addEventListener('click', () => fetchSummary('semanal'));
 
     async function fetchSummary(periodo) {
         try {
@@ -164,75 +165,52 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateStatusUI(status, qrDataUrl) {
         switch (status) {
             case 'ESPERANDO_QR':
-                statusDot.className = 'status-dot pulsing';
-                statusBadge.textContent = 'Esperando Código QR';
-                statusBadge.style.color = '#f59e0b';
-                if (qrDataUrl) {
+                if (statusDot) statusDot.className = 'status-dot pulsing';
+                if (statusBadgeText) statusBadgeText.textContent = 'Esperando QR';
+                if (kpiStatus) kpiStatus.textContent = 'Esperando QR';
+                if (qrDataUrl && qrImage) {
                     qrImage.src = qrDataUrl;
                     qrImage.style.display = 'block';
-                    spinner.style.display = 'none';
-                    statusMessage.style.display = 'none';
+                    if (spinner) spinner.style.display = 'none';
+                    if (statusMessage) statusMessage.style.display = 'none';
                 }
                 break;
 
             case 'AUTENTICADO':
             case 'CONECTADO_24_7':
-                statusDot.className = 'status-dot connected';
-                statusBadge.textContent = 'Conectado 24/7 en la Nube';
-                statusBadge.style.color = '#10b981';
-                qrImage.style.display = 'none';
-                spinner.style.display = 'none';
-                statusMessage.innerHTML = '✅ <strong>WhatsApp Conectado y Ejecutando los Módulos de Automatización.</strong>';
-                statusMessage.style.display = 'block';
-                statusMessage.style.color = '#10b981';
+                if (statusDot) statusDot.className = 'status-dot connected';
+                if (statusBadgeText) statusBadgeText.textContent = 'Conectado 24/7';
+                if (kpiStatus) kpiStatus.textContent = 'Conectado 24/7';
+                if (qrImage) qrImage.style.display = 'none';
+                if (spinner) spinner.style.display = 'none';
+                if (statusMessage) {
+                    statusMessage.innerHTML = '✅ <strong>WhatsApp Conectado y Ejecutando los Módulos de Automatización.</strong>';
+                    statusMessage.style.display = 'block';
+                    statusMessage.style.color = '#10b981';
+                }
                 break;
 
             case 'DESCONECTADO':
             default:
-                statusDot.className = 'status-dot disconnected';
-                statusBadge.textContent = 'Desconectado';
-                statusBadge.style.color = '#ef4444';
-                qrImage.style.display = 'none';
-                spinner.style.display = 'block';
-                statusMessage.textContent = 'Reconectando con WhatsApp...';
-                statusMessage.style.display = 'block';
-                statusMessage.style.color = '#ef4444';
+                if (statusDot) statusDot.className = 'status-dot disconnected';
+                if (statusBadgeText) statusBadgeText.textContent = 'Desconectado';
+                if (kpiStatus) kpiStatus.textContent = 'Desconectado';
+                if (qrImage) qrImage.style.display = 'none';
+                if (spinner) spinner.style.display = 'block';
+                if (statusMessage) {
+                    statusMessage.textContent = 'Reconectando con WhatsApp...';
+                    statusMessage.style.display = 'block';
+                    statusMessage.style.color = '#ef4444';
+                }
                 break;
         }
-    }
-
-    function renderEvents(events) {
-        eventsList.innerHTML = '';
-        totalEvents = events.length;
-        if (eventCounter) eventCounter.textContent = `${totalEvents} eventos`;
-
-        if (events.length === 0) {
-            eventsList.innerHTML = '<div class="empty-state"><p>No hay eventos de lluvia registrados.</p></div>';
-            return;
-        }
-
-        events.forEach(evt => addEventToUI(evt, false));
-    }
-
-    function addEventToUI(evt, isNew = false) {
-        const item = document.createElement('div');
-        item.className = `event-item ${isNew ? 'new-item' : ''}`;
-        item.innerHTML = `
-            <div class="event-meta">
-                <span class="event-tag">🌧️ Clima</span>
-                <span>📅 ${evt.fecha} ${evt.hora}</span>
-                <span>📌 Chat: <strong>${evt.proyecto}</strong></span>
-                <span>👤 ${evt.remitente}</span>
-            </div>
-            <div class="event-body">${evt.mensaje}</div>
-        `;
-        eventsList.prepend(item);
     }
 
     function renderPhotos(photos) {
         photosGrid.innerHTML = '';
         totalPhotos = photos.length;
         if (photoCounter) photoCounter.textContent = `${totalPhotos} fotos`;
+        if (kpiPhotos) kpiPhotos.textContent = `${totalPhotos} Fotos`;
 
         if (photos.length === 0) {
             photosGrid.innerHTML = '<div class="empty-state">No se han recibido fotografías en los grupos.</div>';
@@ -248,11 +226,10 @@ document.addEventListener('DOMContentLoaded', () => {
         card.innerHTML = `
             <img src="${photo.url}" alt="${photo.descripcion}" loading="lazy">
             <div class="photo-info">
-                <div class="photo-title">📁 ${photo.grupo}</div>
-                <div class="photo-desc">💬 ${photo.descripcion}</div>
-                <div class="photo-meta">
-                    <span>👤 ${photo.remitente}</span>
-                    <span>🕒 ${photo.fecha} ${photo.hora}</span>
+                <div class="photo-title" style="font-weight: bold; color: #f8fafc;">📁 ${photo.grupo}</div>
+                <div class="photo-desc" style="color: #cbd5e1; font-size: 13px;">💬 ${photo.descripcion}</div>
+                <div class="photo-meta" style="font-size: 12px; color: #94a3b8;">
+                    <span>👤 ${photo.remitente}</span> • <span>🕒 ${photo.fecha} ${photo.hora}</span>
                 </div>
                 <a href="${photo.url}" download="${photo.nombreArchivo}" class="btn-download">⬇️ Descargar Foto HD</a>
             </div>
@@ -265,6 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
         audiosList.innerHTML = '';
         totalAudios = audios.length;
         if (audioCounter) audioCounter.textContent = `${totalAudios} audios`;
+        if (kpiAudios) kpiAudios.textContent = `${totalAudios} Audios`;
 
         if (audios.length === 0) {
             audiosList.innerHTML = '<div class="empty-state">No se han recibido notas de voz por el momento.</div>';
@@ -316,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         totalHvs = filtered.length;
         if (hvCounter) hvCounter.textContent = `${totalHvs} HVs`;
+        if (kpiHvs) kpiHvs.textContent = `${totalHvs} HVs`;
 
         if (filtered.length === 0) {
             hvsGrid.innerHTML = '<div class="empty-state">No hay Hojas de Vida registradas para esta categoría.</div>';
@@ -355,6 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
         remindersList.innerHTML = '';
         totalReminders = reminders.length;
         if (reminderCounter) reminderCounter.textContent = `${totalReminders} citas`;
+        if (kpiReminders) kpiReminders.textContent = `${totalReminders} Citas`;
 
         if (reminders.length === 0) {
             remindersList.innerHTML = '<div class="empty-state">No hay citas ni compromisos registrados por el momento.</div>';

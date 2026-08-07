@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Cloud Hub 24/7 - Plataforma Multifuncional</title>
-    <link rel="stylesheet" href="style.css?v=2.2">
+    <title>WhatsApp Executive Hub 24/7 - Full Screen</title>
+    <link rel="stylesheet" href="style.css?v=3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -15,88 +15,112 @@
         <div class="globe globe-2"></div>
     </div>
 
-    <div class="container">
-        <!-- Header -->
-        <header class="glass-card header-card">
-            <div class="brand">
-                <div class="status-dot pulsing" id="statusDot"></div>
-                <div>
-                    <h1>WhatsApp Automation Hub 24/7</h1>
-                    <p class="subtitle">Plataforma Multifuncional: Audios IA, Google Drive, Hojas de Vida, Fotos, Citas y Resúmenes</p>
+    <!-- FULL SCREEN APP WRAPPER -->
+    <div class="app-wrapper">
+        
+        <!-- SIDEBAR NAVIGATION (DESKTOP) -->
+        <aside class="app-sidebar">
+            <div>
+                <div class="sidebar-brand">
+                    <div class="brand-icon">⚡</div>
+                    <div class="brand-info">
+                        <h2>WhatsApp Cloud 24/7</h2>
+                        <p>Ingelec Group SAS BIC</p>
+                    </div>
+                </div>
+
+                <nav class="sidebar-menu">
+                    <div class="menu-label">Módulos Principales</div>
+                    
+                    <button class="nav-item active" data-hub="hub-talento">
+                        <span class="nav-icon">👥</span>
+                        <span>Talento & HVs</span>
+                    </button>
+
+                    <button class="nav-item" data-hub="hub-ia">
+                        <span class="nav-icon">🎙️</span>
+                        <span>IA, Audios & Resúmenes</span>
+                    </button>
+
+                    <button class="nav-item" data-hub="hub-multimedia">
+                        <span class="nav-icon">📷</span>
+                        <span>Multimedia & Drive</span>
+                    </button>
+
+                    <button class="nav-item" data-hub="hub-ops">
+                        <span class="nav-icon">⚙️</span>
+                        <span>Operaciones & QR</span>
+                    </button>
+                </nav>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="status-badge" id="statusBadge">
+                    <div class="status-dot pulsing" id="statusDot"></div>
+                    <span id="statusBadgeText">Conectando...</span>
                 </div>
             </div>
-            <div class="status-badge" id="statusBadge">Conectando...</div>
-        </header>
+        </aside>
 
-        <!-- Navegación por Pestañas (Tabs) -->
-        <nav class="nav-tabs glass-card">
-            <button class="tab-btn active" data-tab="tab-monitor">📌 Monitoreo & QR</button>
-            <button class="tab-btn" data-tab="tab-audios">🎙️ Audios & Transcripciones</button>
-            <button class="tab-btn" data-tab="tab-hvs">📄 Hojas de Vida (CVs)</button>
-            <button class="tab-btn" data-tab="tab-photos">📷 Fotos & Reportes</button>
-            <button class="tab-btn" data-tab="tab-summaries">📊 Resúmenes & Informes</button>
-            <button class="tab-btn" data-tab="tab-forward">🔁 Reenvíos</button>
-            <button class="tab-btn" data-tab="tab-reminders">📅 Citas</button>
-            <button class="tab-btn" data-tab="tab-cleanup">🧹 Limpieza</button>
-        </nav>
+        <!-- MAIN FULL SCREEN CONTENT AREA -->
+        <main class="app-main">
+            
+            <!-- TOP EXECUTIVE KPI ROW (FULL SCREEN WIDTH) -->
+            <div class="kpi-row">
+                <div class="kpi-card">
+                    <div class="kpi-icon-box" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">🌐</div>
+                    <div>
+                        <div class="kpi-val" id="kpiStatus">Activo</div>
+                        <div class="kpi-lbl">Estado Nube 24/7</div>
+                    </div>
+                </div>
 
-        <main class="tab-content-container">
-            <!-- PESTAÑA 1: MONITOREO Y QR -->
-            <div class="tab-pane active" id="tab-monitor">
-                <div class="grid-layout">
-                    <section class="glass-card qr-section" id="qrCard">
-                        <h2>Vincular con tu iPhone</h2>
-                        <p class="section-desc">Abre WhatsApp en tu iPhone ➔ <strong>Dispositivos vinculados</strong> ➔ Escanea el código QR:</p>
-                        
-                        <div class="qr-container" id="qrContainer">
-                            <div class="spinner" id="spinner"></div>
-                            <img id="qrImage" src="" alt="Código QR WhatsApp" style="display: none;">
-                            <div id="statusMessage" class="status-message">Generando código QR...</div>
-                        </div>
-                    </section>
+                <div class="kpi-card">
+                    <div class="kpi-icon-box" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa;">📄</div>
+                    <div>
+                        <div class="kpi-val" id="kpiHvs">0 HVs</div>
+                        <div class="kpi-lbl">Hojas de Vida Capturadas</div>
+                    </div>
+                </div>
 
-                    <section class="glass-card events-section">
-                        <div class="section-header">
-                            <h2>🌧️ Bitácora de Eventos en Vivo</h2>
-                            <span class="event-counter" id="eventCounter">0 eventos</span>
-                        </div>
-                        <div class="events-list" id="eventsList">
-                            <div class="empty-state" id="emptyState">
-                                <p>No se han registrado eventos en tiempo real aún.</p>
-                            </div>
-                        </div>
-                    </section>
+                <div class="kpi-card">
+                    <div class="kpi-icon-box" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">🎙️</div>
+                    <div>
+                        <div class="kpi-val" id="kpiAudios">0 Audios</div>
+                        <div class="kpi-lbl">Transcripciones por IA</div>
+                    </div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-icon-box" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">📷</div>
+                    <div>
+                        <div class="kpi-val" id="kpiPhotos">0 Fotos</div>
+                        <div class="kpi-lbl">Fotos HD Sincronizadas</div>
+                    </div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-icon-box" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">📅</div>
+                    <div>
+                        <div class="kpi-val" id="kpiReminders">0 Citas</div>
+                        <div class="kpi-lbl">Compromisos Registrados</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- PESTAÑA NUEVA: AUDIOS Y TRANSCRIPCIONES -->
-            <div class="tab-pane" id="tab-audios">
+            <!-- HUB 1: TALENTO & HOJAS DE VIDA (FULL SCREEN) -->
+            <div class="hub-pane active" id="hub-talento">
                 <section class="glass-card">
                     <div class="section-header">
-                        <h2>🎙️ Transcripciones de Audios de Voz en Tiempo Real</h2>
-                        <span class="event-counter" id="audioCounter">0 audios</span>
+                        <h2>👥 Reservorio Especial de Hojas de Vida (CVs)</h2>
+                        <span class="status-badge" id="hvCounter">0 HVs</span>
                     </div>
-                    <p class="section-desc">Cada nota de voz recibida es transcrita por IA a texto y respondida automáticamente en el mismo chat:</p>
+                    <p class="section-desc">Documentos PDF, Word e imágenes de Hojas de Vida organizadas por profesiones, fecha y alfabéticamente:</p>
                     
-                    <div class="events-list" id="audiosList">
-                        <div class="empty-state">No se han recibido notas de voz en los chats por el momento.</div>
-                    </div>
-                </section>
-            </div>
-
-            <!-- PESTAÑA HOJAS DE VIDA (CVs) -->
-            <div class="tab-pane" id="tab-hvs">
-                <section class="glass-card">
-                    <div class="section-header">
-                        <h2>📄 Reservorio Especial de Hojas de Vida (CVs)</h2>
-                        <span class="event-counter" id="hvCounter">0 HVs</span>
-                    </div>
-                    <p class="section-desc">Documentos PDF, Word e imágenes de Hojas de Vida organizadas por profesiones, fechas y orden alfabético:</p>
-                    
-                    <div class="filter-controls" style="display: flex; gap: 15px; margin: 15px 0; flex-wrap: wrap;">
+                    <div class="filter-controls" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <div style="flex: 1; min-width: 200px;">
                             <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 4px;">Ordenar Hojas de Vida por:</label>
-                            <select id="hvSortSelect" class="glass-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; background: rgba(30, 41, 59, 0.8); color: #fff; border: 1px solid rgba(148, 163, 184, 0.3);">
+                            <select id="hvSortSelect" class="glass-input">
                                 <option value="profesion">🏷️ Por Profesión</option>
                                 <option value="fecha">📅 Por Fecha (Más recientes primero)</option>
                                 <option value="alfabetico">🔤 Alfabéticamente por Nombre (A-Z)</option>
@@ -105,7 +129,7 @@
 
                         <div style="flex: 1; min-width: 200px;">
                             <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 4px;">Filtrar por Profesión:</label>
-                            <select id="hvFilterSelect" class="glass-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; background: rgba(30, 41, 59, 0.8); color: #fff; border: 1px solid rgba(148, 163, 184, 0.3);">
+                            <select id="hvFilterSelect" class="glass-input">
                                 <option value="TODAS">🌐 Todas las Profesiones</option>
                                 <option value="⚡ Ingeniería Eléctrica / Electrónica">⚡ Ingeniería Eléctrica / Electrónica</option>
                                 <option value="🏗️ Ingeniería Civil / Obra / Arquitectura">🏗️ Ingeniería Civil / Obra / Arquitectura</option>
@@ -124,31 +148,29 @@
                 </section>
             </div>
 
-            <!-- PESTAÑA FOTOS & REPORTES -->
-            <div class="tab-pane" id="tab-photos">
+            <!-- HUB 2: IA, AUDIOS & RESÚMENES -->
+            <div class="hub-pane" id="hub-ia">
                 <section class="glass-card">
                     <div class="section-header">
-                        <h2>📷 Galería de Fotos Recopiladas y Renombradas</h2>
-                        <span class="event-counter" id="photoCounter">0 fotos</span>
+                        <h2>🎙️ Transcripción de Audios de Voz e Inteligencia Artificial</h2>
+                        <span class="status-badge" id="audioCounter">0 audios</span>
                     </div>
-                    <p class="section-desc">Fotos descargadas en HD, renombradas automáticamente y respaldadas en Google Drive:</p>
-                    <div class="photos-grid" id="photosGrid">
-                        <div class="empty-state">No se han recibido fotografías en los grupos monitoreados.</div>
+                    <p class="section-desc">Notas de voz trascritas por IA y respondidas automáticamente en los mismos chats:</p>
+
+                    <div class="events-list" id="audiosList" style="margin-bottom: 24px;">
+                        <div class="empty-state">No se han recibido notas de voz por el momento.</div>
                     </div>
                 </section>
-            </div>
 
-            <!-- PESTAÑA NUEVA: RESÚMENES & INFORMES DE ACTIVIDAD -->
-            <div class="tab-pane" id="tab-summaries">
                 <section class="glass-card">
                     <div class="section-header">
                         <h2>📊 Generador de Resúmenes Periódicos de Actividad</h2>
                     </div>
-                    <p class="section-desc">Genera informes sintetizados de fotos, Hojas de Vida, audios transcritos y citas por período:</p>
+                    <p class="section-desc">Genera informes consolidados de actividad diaria o semanal:</p>
 
-                    <div style="display: flex; gap: 15px; margin: 15px 0;">
-                        <button id="btnSummaryDaily" class="btn-primary">📊 Resumen Diario</button>
-                        <button id="btnSummaryWeekly" class="btn-primary" style="background: #6366f1;">📅 Resumen Semanal</button>
+                    <div style="display: flex; gap: 15px; margin-bottom: 16px;">
+                        <button id="btnSummaryDaily" class="btn-primary">📊 Generar Resumen Diario</button>
+                        <button id="btnSummaryWeekly" class="btn-primary" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">📅 Generar Resumen Semanal</button>
                     </div>
 
                     <div id="summaryReportContainer" class="event-item" style="display: none; background: rgba(15, 23, 42, 0.8); padding: 20px; border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.4);">
@@ -157,79 +179,110 @@
                 </section>
             </div>
 
-            <!-- PESTAÑA REENVÍO ENTRE CHATS -->
-            <div class="tab-pane" id="tab-forward">
+            <!-- HUB 3: MULTIMEDIA & GOOGLE DRIVE -->
+            <div class="hub-pane" id="hub-multimedia">
                 <section class="glass-card">
                     <div class="section-header">
-                        <h2>🔁 Reglas de Reenvío Inteligente a Otros Chats</h2>
+                        <h2>📷 Galería de Fotos Recopiladas y Respaldo en Nube</h2>
+                        <span class="status-badge" id="photoCounter">0 fotos</span>
                     </div>
-                    <p class="section-desc">Los mensajes marcados con estas etiquetas se copiarán/reenviarán automáticamente al chat de destino:</p>
+                    <p class="section-desc">Fotos en HD descargadas, renombradas automáticamente y sincronizadas con Google Drive:</p>
                     
-                    <form id="forwardRulesForm" class="rules-form">
-                        <div class="form-group">
-                            <label>Chat/Grupo de Destino (Ej: Gerencia Ingelec):</label>
-                            <input type="text" id="targetChatName" class="glass-input" value="Gerencia Ingelec">
-                        </div>
-                        <div class="form-group">
-                            <label>Etiquetas / Palabras Clave a Reenviar (separadas por coma):</label>
-                            <input type="text" id="targetTags" class="glass-input" value="#urgente, #gerencia, #reporte">
-                        </div>
-                        <button type="submit" class="btn-primary">Guardar Configuración de Reenvío</button>
-                    </form>
+                    <div class="photos-grid" id="photosGrid">
+                        <div class="empty-state">No se han recibido fotografías en los grupos monitoreados.</div>
+                    </div>
+                </section>
+            </div>
 
-                    <div class="logs-container" style="margin-top: 20px;">
-                        <h3>Historial de Mensajes Reenviados</h3>
+            <!-- HUB 4: OPERACIONES, QR, REENVÍOS & LIMPIEZA -->
+            <div class="hub-pane" id="hub-ops">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; width: 100%;">
+                    <!-- QR Y CONEXIÓN -->
+                    <section class="glass-card">
+                        <h2>📌 Vinculación con WhatsApp</h2>
+                        <p class="section-desc">Escanea este código desde <strong>Dispositivos vinculados</strong> en tu teléfono:</p>
+                        
+                        <div class="qr-container" id="qrContainer">
+                            <div class="spinner" id="spinner"></div>
+                            <img id="qrImage" src="" alt="Código QR WhatsApp" style="display: none;">
+                            <div id="statusMessage" class="status-message">Generando código QR...</div>
+                        </div>
+                    </section>
+
+                    <!-- LIMPIEZA DE CHATS -->
+                    <section class="glass-card">
+                        <h2>🧹 Limpieza de Chats (> 6 Meses Inactivos)</h2>
+                        <p class="section-desc">Archiva automáticamente conversaciones sin actividad por más de 180 días:</p>
+
+                        <button id="btnRunCleanup" class="btn-primary btn-warning" style="width: 100%; margin-bottom: 16px;">
+                            🚀 Ejecutar Limpieza de Chats Inactivos (>180 días)
+                        </button>
+
+                        <div class="logs-container">
+                            <h3 style="font-size: 14px; margin-bottom: 8px;">Reportes de Limpieza</h3>
+                            <div class="events-list" id="cleanupLogsList">
+                                <div class="empty-state">Sin reportes aún.</div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- CITAS Y REENVÍOS EN PANTALLA COMPLETA -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; width: 100%;">
+                    <section class="glass-card">
+                        <div class="section-header">
+                            <h2>📅 Citas y Compromisos Detectados</h2>
+                            <span class="status-badge" id="reminderCounter">0 citas</span>
+                        </div>
+                        <div class="events-list" id="remindersList">
+                            <div class="empty-state">No hay citas capturadas por el momento.</div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card">
+                        <h2>🔁 Reenvío Inteligente por Etiquetas</h2>
+                        <form id="forwardRulesForm" class="rules-form" style="margin-bottom: 16px;">
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 12px; color: #94a3b8;">Chat Destino:</label>
+                                <input type="text" id="targetChatName" class="glass-input" value="Gerencia Ingelec">
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 12px; color: #94a3b8;">Etiquetas:</label>
+                                <input type="text" id="targetTags" class="glass-input" value="#urgente, #gerencia, #reporte">
+                            </div>
+                            <button type="submit" class="btn-primary" style="width: 100%;">Guardar Configuración</button>
+                        </form>
                         <div class="events-list" id="forwardLogsList">
                             <div class="empty-state">No hay reenvíos registrados aún.</div>
                         </div>
-                    </div>
-                </section>
+                    </section>
+                </div>
             </div>
 
-            <!-- PESTAÑA CITAS Y RECORDATORIOS -->
-            <div class="tab-pane" id="tab-reminders">
-                <section class="glass-card">
-                    <div class="section-header">
-                        <h2>📅 Citas y Recordatorios Capturados de Chats</h2>
-                        <span class="event-counter" id="reminderCounter">0 citas</span>
-                    </div>
-                    <p class="section-desc">Compromisos y citas de inspección detectados automáticamente en tus conversaciones:</p>
-                    <div class="events-list" id="remindersList">
-                        <div class="empty-state">No hay citas capturadas por el momento.</div>
-                    </div>
-                </section>
-            </div>
-
-            <!-- PESTAÑA LIMPIEZA DE CHATS INACTIVOS -->
-            <div class="tab-pane" id="tab-cleanup">
-                <section class="glass-card">
-                    <div class="section-header">
-                        <h2>🧹 Mantenimiento y Limpieza de Chats (> 6 Meses Inactivos)</h2>
-                    </div>
-                    <p class="section-desc">Escanea todos tus chats de WhatsApp. Si una conversación lleva más de 180 días sin actividad, se archivará automáticamente para mantener tu teléfono limpio.</p>
-                    
-                    <div class="action-box">
-                        <button id="btnRunCleanup" class="btn-primary btn-warning">
-                            🚀 Ejecutar Limpieza de Chats Inactivos (>180 días)
-                        </button>
-                    </div>
-
-                    <div class="logs-container" style="margin-top: 20px;">
-                        <h3>Reportes de Limpiezas Ejecutadas</h3>
-                        <div class="events-list" id="cleanupLogsList">
-                            <div class="empty-state">Presiona el botón superior para realizar el primer escaneo de limpieza.</div>
-                        </div>
-                    </div>
-                </section>
-            </div>
         </main>
-
-        <footer class="footer">
-            <p>Plataforma Multifuncional WhatsApp 24/7 &bull; Ingelec Group SAS BIC</p>
-        </footer>
     </div>
 
+    <!-- BOTTOM NAVIGATION FOR MOBILE (< 768px) -->
+    <nav class="bottom-nav">
+        <button class="bottom-nav-item active" data-hub="hub-talento">
+            <span>👥</span>
+            Talento
+        </button>
+        <button class="bottom-nav-item" data-hub="hub-ia">
+            <span>🎙️</span>
+            IA & Voz
+        </button>
+        <button class="bottom-nav-item" data-hub="hub-multimedia">
+            <span>📷</span>
+            Nube
+        </button>
+        <button class="bottom-nav-item" data-hub="hub-ops">
+            <span>⚙️</span>
+            Sistema
+        </button>
+    </nav>
+
     <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js?v=2.2"></script>
+    <script src="app.js?v=3.0"></script>
 </body>
 </html>
