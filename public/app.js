@@ -52,6 +52,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cleanupLog) renderCleanupLogs(cleanupLog);
     });
 
+    // Verificación de estado de respaldo mediante HTTP cada 3 segundos
+    async function checkStatusHTTP() {
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            if (data && data.status) {
+                updateStatusUI(data.status, data.qr);
+                if (data.events && data.events.length > 0) renderEvents(data.events);
+                if (data.photos && data.photos.length > 0) renderPhotos(data.photos);
+                if (data.reminders && data.reminders.length > 0) renderReminders(data.reminders);
+            }
+        } catch (e) {}
+    }
+
+    checkStatusHTTP();
+    setInterval(checkStatusHTTP, 3000);
+
     // Escuchar Eventos en Tiempo Real
     socket.on('new-event', (evt) => addEventToUI(evt, true));
     socket.on('new-photo', (photo) => addPhotoToUI(photo, true));
