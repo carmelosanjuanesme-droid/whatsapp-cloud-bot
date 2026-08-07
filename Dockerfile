@@ -1,11 +1,11 @@
-FROM node:20-slim
+FROM node:20
 
 # Directorio de trabajo
 WORKDIR /app
 
 # Copiar archivos de dependencias e instalar
 COPY package.json ./
-RUN npm install --production
+RUN npm install --omit=dev --no-optional
 
 # Copiar el resto del código
 COPY . .
