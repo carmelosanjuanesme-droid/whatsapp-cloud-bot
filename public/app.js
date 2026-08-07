@@ -19,6 +19,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const hvSortSelect = document.getElementById('hvSortSelect');
     const hvFilterSelect = document.getElementById('hvFilterSelect');
 
+    const audiosList = document.getElementById('audiosList');
+    const audioCounter = document.getElementById('audioCounter');
+
+    const btnSummaryDaily = document.getElementById('btnSummaryDaily');
+    const btnSummaryWeekly = document.getElementById('btnSummaryWeekly');
+    const summaryReportContainer = document.getElementById('summaryReportContainer');
+    const summaryReportText = document.getElementById('summaryReportText');
+
     const remindersList = document.getElementById('remindersList');
     const reminderCounter = document.getElementById('reminderCounter');
 
@@ -29,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalEvents = 0;
     let totalPhotos = 0;
     let totalHvs = 0;
+    let totalAudios = 0;
     let totalReminders = 0;
     let currentHvsList = [];
 
@@ -49,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 2. Escuchar Estado Inicial e Historial Completo
     socket.on('status-update', (data) => {
-        const { status, qr, events, photos, hvs, reminders, forwardingRules, cleanupLog } = data;
+        const { status, qr, events, photos, hvs, audios, reminders, forwardingRules, cleanupLog } = data;
 
         updateStatusUI(status, qr);
 
@@ -59,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentHvsList = hvs;
             renderHvs(currentHvsList);
         }
+        if (audios) renderAudios(audios);
         if (reminders) renderReminders(reminders);
         if (cleanupLog) renderCleanupLogs(cleanupLog);
     });
@@ -76,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentHvsList = data.hvs;
                     renderHvs(currentHvsList);
                 }
+                if (data.audios && data.audios.length > 0) renderAudios(data.audios);
                 if (data.reminders && data.reminders.length > 0) renderReminders(data.reminders);
             }
         } catch (e) {}
@@ -91,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentHvsList.unshift(hv);
         renderHvs(currentHvsList);
     });
+    socket.on('new-audio', (audio) => addAudioToUI(audio, true));
     socket.on('new-reminder', (rem) => addReminderToUI(rem, true));
     socket.on('new-log', (log) => addForwardLogToUI(log));
     socket.on('cleanup-completed', (report) => renderCleanupLogs([report]));
@@ -99,7 +111,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (hvSortSelect) hvSortSelect.addEventListener('change', () => renderHvs(currentHvsList));
     if (hvFilterSelect) hvFilterSelect.addEventListener('change', () => renderHvs(currentHvsList));
 
-    // 3. Ejecutar Limpieza de Chats Inactivos (>6 meses)
+    // Generador de Resúmenes Periódicos
+    if (btnSummaryDaily) {
+        btnSummaryDaily.addEventListener('click', () => fetchSummary('diario'));
+    }
+    if (btnSummaryWeekly) {
+        btnSummaryWeekly.addEventListener('click', () => fetchSummary('semanal'));
+    }
+
+    async function fetchSummary(periodo) {
+        try {
+            const response = await fetch(`/api/generate-summary?periodo=${periodo}`);
+            const data = await response.json();
+            if (data.success && data.resumen) {
+                summaryReportText.textContent = data.resumen.resumenTexto;
+                summaryReportContainer.style.display = 'block';
+            }
+        } catch (e) {
+            alert('Error generando resumen de actividad.');
+        }
+    }
+
+    // Ejecutar Limpieza de Chats Inactivos (>6 meses)
     if (btnRunCleanup) {
         btnRunCleanup.addEventListener('click', async () => {
             btnRunCleanup.disabled = true;
@@ -127,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 4. Funciones de Renderizado
+    // Funciones de Renderizado
     function updateStatusUI(status, qrDataUrl) {
         switch (status) {
             case 'ESPERANDO_QR':
@@ -149,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusBadge.style.color = '#10b981';
                 qrImage.style.display = 'none';
                 spinner.style.display = 'none';
-                statusMessage.innerHTML = '✅ <strong>WhatsApp Conectado y Ejecutando los 5 Módulos.</strong>';
+                statusMessage.innerHTML = '✅ <strong>WhatsApp Conectado y Ejecutando los Módulos de Automatización.</strong>';
                 statusMessage.style.display = 'block';
                 statusMessage.style.color = '#10b981';
                 break;
@@ -227,19 +260,51 @@ document.addEventListener('DOMContentLoaded', () => {
         photosGrid.prepend(card);
     }
 
+    // Renderizado de Audios y Transcripciones
+    function renderAudios(audios) {
+        audiosList.innerHTML = '';
+        totalAudios = audios.length;
+        if (audioCounter) audioCounter.textContent = `${totalAudios} audios`;
+
+        if (audios.length === 0) {
+            audiosList.innerHTML = '<div class="empty-state">No se han recibido notas de voz por el momento.</div>';
+            return;
+        }
+
+        audios.forEach(audio => addAudioToUI(audio, false));
+    }
+
+    function addAudioToUI(audio, isNew = false) {
+        const item = document.createElement('div');
+        item.className = `event-item ${isNew ? 'new-item' : ''}`;
+        item.style.background = 'rgba(30, 41, 59, 0.7)';
+        item.style.borderLeft = '4px solid #a855f7';
+        item.innerHTML = `
+            <div class="event-meta">
+                <span class="event-tag" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">🎙️ Transcripción IA</span>
+                <span>🕒 ${audio.fecha} ${audio.hora}</span>
+                <span>📌 Chat: <strong>${audio.grupo}</strong></span>
+                <span>👤 ${audio.remitente}</span>
+            </div>
+            <div class="event-body" style="font-size: 14px; font-weight: 500; color: #f1f5f9; margin-top: 6px;">
+                💬 "${audio.transcripcion}"
+            </div>
+            <audio controls src="${audio.url}" style="margin-top: 10px; width: 100%; height: 36px;"></audio>
+        `;
+        audiosList.prepend(item);
+    }
+
     // Renderizado y Clasificación Avanzada de Hojas de Vida (CVs)
     function renderHvs(hvs) {
         hvsGrid.innerHTML = '';
         
         let filtered = [...hvs];
 
-        // 1. Filtrar por profesión si se selecciona una específica
         const filterVal = hvFilterSelect ? hvFilterSelect.value : 'TODAS';
         if (filterVal !== 'TODAS') {
             filtered = filtered.filter(hv => hv.profesion === filterVal);
         }
 
-        // 2. Ordenar lista
         const sortVal = hvSortSelect ? hvSortSelect.value : 'profesion';
         if (sortVal === 'profesion') {
             filtered.sort((a, b) => (a.profesion || '').localeCompare(b.profesion || ''));

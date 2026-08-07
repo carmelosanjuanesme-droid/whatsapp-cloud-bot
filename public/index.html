@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WhatsApp Cloud Hub 24/7 - Plataforma Multifuncional</title>
-    <link rel="stylesheet" href="style.css?v=2.1">
+    <link rel="stylesheet" href="style.css?v=2.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
                 <div class="status-dot pulsing" id="statusDot"></div>
                 <div>
                     <h1>WhatsApp Automation Hub 24/7</h1>
-                    <p class="subtitle">Plataforma Multifuncional: Hojas de Vida, Fotos, Reenvíos, Citas y Limpieza</p>
+                    <p class="subtitle">Plataforma Multifuncional: Audios IA, Google Drive, Hojas de Vida, Fotos, Citas y Resúmenes</p>
                 </div>
             </div>
             <div class="status-badge" id="statusBadge">Conectando...</div>
@@ -31,11 +31,13 @@
         <!-- Navegación por Pestañas (Tabs) -->
         <nav class="nav-tabs glass-card">
             <button class="tab-btn active" data-tab="tab-monitor">📌 Monitoreo & QR</button>
+            <button class="tab-btn" data-tab="tab-audios">🎙️ Audios & Transcripciones</button>
             <button class="tab-btn" data-tab="tab-hvs">📄 Hojas de Vida (CVs)</button>
             <button class="tab-btn" data-tab="tab-photos">📷 Fotos & Reportes</button>
-            <button class="tab-btn" data-tab="tab-forward">🔁 Reenvío entre Chats</button>
-            <button class="tab-btn" data-tab="tab-reminders">📅 Citas & Recordatorios</button>
-            <button class="tab-btn" data-tab="tab-cleanup">🧹 Limpieza de Chats (>6 meses)</button>
+            <button class="tab-btn" data-tab="tab-summaries">📊 Resúmenes & Informes</button>
+            <button class="tab-btn" data-tab="tab-forward">🔁 Reenvíos</button>
+            <button class="tab-btn" data-tab="tab-reminders">📅 Citas</button>
+            <button class="tab-btn" data-tab="tab-cleanup">🧹 Limpieza</button>
         </nav>
 
         <main class="tab-content-container">
@@ -67,7 +69,22 @@
                 </div>
             </div>
 
-            <!-- PESTAÑA NUEVA: HOJAS DE VIDA (CVs) CON ORGANIZADOR POR PROFESIONES Y ORDEN -->
+            <!-- PESTAÑA NUEVA: AUDIOS Y TRANSCRIPCIONES -->
+            <div class="tab-pane" id="tab-audios">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>🎙️ Transcripciones de Audios de Voz en Tiempo Real</h2>
+                        <span class="event-counter" id="audioCounter">0 audios</span>
+                    </div>
+                    <p class="section-desc">Cada nota de voz recibida es transcrita por IA a texto y respondida automáticamente en el mismo chat:</p>
+                    
+                    <div class="events-list" id="audiosList">
+                        <div class="empty-state">No se han recibido notas de voz en los chats por el momento.</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- PESTAÑA HOJAS DE VIDA (CVs) -->
             <div class="tab-pane" id="tab-hvs">
                 <section class="glass-card">
                     <div class="section-header">
@@ -107,21 +124,40 @@
                 </section>
             </div>
 
-            <!-- PESTAÑA 2: FOTOS & REPORTES -->
+            <!-- PESTAÑA FOTOS & REPORTES -->
             <div class="tab-pane" id="tab-photos">
                 <section class="glass-card">
                     <div class="section-header">
                         <h2>📷 Galería de Fotos Recopiladas y Renombradas</h2>
                         <span class="event-counter" id="photoCounter">0 fotos</span>
                     </div>
-                    <p class="section-desc">Fotos descargadas en HD, renombradas automáticamente y listas para reportes:</p>
+                    <p class="section-desc">Fotos descargadas en HD, renombradas automáticamente y respaldadas en Google Drive:</p>
                     <div class="photos-grid" id="photosGrid">
                         <div class="empty-state">No se han recibido fotografías en los grupos monitoreados.</div>
                     </div>
                 </section>
             </div>
 
-            <!-- PESTAÑA 3: REENVÍO ENTRE CHATS -->
+            <!-- PESTAÑA NUEVA: RESÚMENES & INFORMES DE ACTIVIDAD -->
+            <div class="tab-pane" id="tab-summaries">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>📊 Generador de Resúmenes Periódicos de Actividad</h2>
+                    </div>
+                    <p class="section-desc">Genera informes sintetizados de fotos, Hojas de Vida, audios transcritos y citas por período:</p>
+
+                    <div style="display: flex; gap: 15px; margin: 15px 0;">
+                        <button id="btnSummaryDaily" class="btn-primary">📊 Resumen Diario</button>
+                        <button id="btnSummaryWeekly" class="btn-primary" style="background: #6366f1;">📅 Resumen Semanal</button>
+                    </div>
+
+                    <div id="summaryReportContainer" class="event-item" style="display: none; background: rgba(15, 23, 42, 0.8); padding: 20px; border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.4);">
+                        <pre id="summaryReportText" style="white-space: pre-wrap; font-family: 'Inter', sans-serif; color: #e2e8f0; font-size: 14px; line-height: 1.6;"></pre>
+                    </div>
+                </section>
+            </div>
+
+            <!-- PESTAÑA REENVÍO ENTRE CHATS -->
             <div class="tab-pane" id="tab-forward">
                 <section class="glass-card">
                     <div class="section-header">
@@ -150,7 +186,7 @@
                 </section>
             </div>
 
-            <!-- PESTAÑA 4: CITAS Y RECORDATORIOS -->
+            <!-- PESTAÑA CITAS Y RECORDATORIOS -->
             <div class="tab-pane" id="tab-reminders">
                 <section class="glass-card">
                     <div class="section-header">
@@ -164,7 +200,7 @@
                 </section>
             </div>
 
-            <!-- PESTAÑA 5: LIMPIEZA DE CHATS INACTIVOS -->
+            <!-- PESTAÑA LIMPIEZA DE CHATS INACTIVOS -->
             <div class="tab-pane" id="tab-cleanup">
                 <section class="glass-card">
                     <div class="section-header">
@@ -194,6 +230,6 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js?v=2.1"></script>
+    <script src="app.js?v=2.2"></script>
 </body>
 </html>

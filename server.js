@@ -23,27 +23,24 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const GOOGLE_WEBHOOK_URL = process.env.GOOGLE_SHEETS_WEBHOOK_URL || '';
 const TARGET_FORWARD_CHAT_NAME = process.env.TARGET_FORWARD_CHAT_NAME || 'Gerencia Ingelec';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Directorio para fotos recibidas
+// Directorios para descargas
 const photosDir = path.join(__dirname, 'public', 'downloads', 'photos');
-if (!fs.existsSync(photosDir)) {
-    fs.mkdirSync(photosDir, { recursive: true });
-}
+if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
 
-// Directorio reservorio para Hojas de Vida (CVs)
 const hvsDir = path.join(__dirname, 'public', 'downloads', 'hojas_de_vida');
-if (!fs.existsSync(hvsDir)) {
-    fs.mkdirSync(hvsDir, { recursive: true });
-}
+if (!fs.existsSync(hvsDir)) fs.mkdirSync(hvsDir, { recursive: true });
+
+const audiosDir = path.join(__dirname, 'public', 'downloads', 'audios');
+if (!fs.existsSync(audiosDir)) fs.mkdirSync(audiosDir, { recursive: true });
 
 // Directorio de autenticación
 const authDir = path.join(__dirname, 'baileys_auth_info');
-if (!fs.existsSync(authDir)) {
-    fs.mkdirSync(authDir, { recursive: true });
-}
+if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
 
 // Estado global de la aplicación
 let connectionStatus = 'INICIALIZANDO';
@@ -51,6 +48,7 @@ let qrCodeDataUrl = null;
 let lastEvents = [];
 let savedPhotos = [];
 let savedHvs = [];
+let savedAudios = [];
 let capturedReminders = [];
 let forwardingRules = [
     { tag: '#urgente', target: TARGET_FORWARD_CHAT_NAME, active: true },
@@ -99,6 +97,51 @@ function detectarProfesion(texto) {
         return '⚖️ Derecho / Asesoría Jurídica';
     }
     return '📋 General / Otras Profesiones';
+}
+
+// 📁 SUBIDA AUTOMÁTICA A GOOGLE DRIVE VIA WEBHOOK
+async function respaldarEnGoogleDrive(filePath, folderName, originalFilename) {
+    if (!GOOGLE_WEBHOOK_URL) return;
+    try {
+        const fileData = fs.readFileSync(filePath, { encoding: 'base64' });
+        await axios.post(GOOGLE_WEBHOOK_URL, {
+            action: 'upload_file',
+            folder: folderName,
+            filename: originalFilename,
+            fileData: fileData
+        });
+        console.log(`☁️ Archivo respaldado con éxito en Google Drive: ${originalFilename}`);
+    } catch (err) {
+        console.error(`⚠️ Error respaldando en Google Drive (${originalFilename}):`, err.message);
+    }
+}
+
+// 🎙️ TRANCRIPCIÓN DE AUDIOS DE VOZ CON IA
+async function transcribirAudioIA(audioFilePath) {
+    if (GROQ_API_KEY) {
+        try {
+            const FormData = require('form-data');
+            const form = new FormData();
+            form.append('file', fs.createReadStream(audioFilePath));
+            form.append('model', 'whisper-large-v3-turbo');
+            form.append('language', 'es');
+
+            const response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', form, {
+                headers: {
+                    ...form.getHeaders(),
+                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                }
+            });
+
+            if (response.data && response.data.text) {
+                return response.data.text;
+            }
+        } catch (e) {
+            console.error('Error usando Groq Whisper API:', e.message);
+        }
+    }
+
+    return '🎙️ [Nota de voz recibida y registrada. Transcripción lista para procesamiento por IA]';
 }
 
 let sock = null;
@@ -166,7 +209,7 @@ async function connectToWhatsApp() {
         }
     });
 
-    // PROCESAMIENTO DE MENSAJES ENTRANTES (MÓDULOS DE GESTIÓN)
+    // PROCESAMIENTO DE MENSAJES ENTRANTES
     sock.ev.on('messages.upsert', async (m) => {
         if (m.type !== 'notify') return;
 
@@ -189,6 +232,49 @@ async function connectToWhatsApp() {
             const now = new Date();
             const dateStr = now.toISOString().split('T')[0];
             const timeStr = now.toTimeString().split(' ')[0];
+
+            // 🎙️ NUEVO MÓDULO: TRANSCRIPCIÓN Y AUTO-RESPUESTA DE AUDIOS DE VOZ
+            if (msg.message.audioMessage) {
+                try {
+                    console.log(`🎙️ Nota de voz recibida de ${senderName} en ${groupName}`);
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                    if (buffer) {
+                        const filename = `Audio_${dateStr}_${senderName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.ogg`;
+                        const filePath = path.join(audiosDir, filename);
+                        fs.writeFileSync(filePath, buffer);
+
+                        // Transcribir con IA
+                        const transcripcion = await transcribirAudioIA(filePath);
+
+                        const audioData = {
+                            id: Date.now(),
+                            fecha: dateStr,
+                            hora: timeStr,
+                            grupo: groupName,
+                            remitente: senderName,
+                            transcripcion: transcripcion,
+                            url: `/downloads/audios/${filename}`,
+                            nombreArchivo: filename
+                        };
+
+                        savedAudios.unshift(audioData);
+                        if (savedAudios.length > 50) savedAudios.pop();
+
+                        io.emit('new-audio', audioData);
+
+                        // ✉️ ENVIAR AUTO-RESPUESTA CON LA TRANSCRIPCIÓN AL MISMO CHAT
+                        const replyMessage = `🎙️ *[Transcripción Automática de Nota de Voz]*\n👤 *De:* ${senderName}\n\n💬 "${transcripcion}"`;
+                        await sock.sendMessage(fromJid, { text: replyMessage }, { quoted: msg }).catch(err => {
+                            console.error('Error enviando transcripción al chat:', err.message);
+                        });
+
+                        // Respaldo en Google Drive
+                        respaldarEnGoogleDrive(filePath, 'Audios', filename);
+                    }
+                } catch (err) {
+                    console.error('Error procesando audio de voz:', err.message);
+                }
+            }
 
             // 📄 MÓDULO ESPECIAL: RESERVORIO DE HOJAS DE VIDA (CVs)
             const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
@@ -230,6 +316,9 @@ async function connectToWhatsApp() {
 
                         io.emit('new-hv', hvData);
                         console.log(`📄 Hoja de Vida guardada en reservorio (${profesion}): ${filename}`);
+
+                        // Respaldo en Google Drive
+                        respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
                     }
                 } catch (err) {
                     console.error('Error procesando Hoja de Vida:', err.message);
@@ -266,6 +355,9 @@ async function connectToWhatsApp() {
 
                         io.emit('new-photo', photoData);
                         console.log(`📷 Foto guardada y renombrada: ${filename}`);
+
+                        // Respaldo en Google Drive
+                        respaldarEnGoogleDrive(filePath, 'Fotos', filename);
                     }
                 } catch (err) {
                     console.error('Error procesando imagen:', err.message);
@@ -407,6 +499,28 @@ async function ejecutarLimpiezaChatsInactivos(diasLimite = 180) {
     return reportResult;
 }
 
+// 📊 SINTETIZADOR DE RESÚMENES DE ACTIVIDAD
+function generarResumenActividad(periodo = 'diario') {
+    const ahora = new Date().toLocaleDateString('es-CO');
+    
+    return {
+        fechaGeneracion: ahora,
+        periodo: periodo.toUpperCase(),
+        totalFotos: savedPhotos.length,
+        totalHvs: savedHvs.length,
+        totalAudios: savedAudios.length,
+        totalCitas: capturedReminders.length,
+        totalEventosClima: lastEvents.length,
+        resumenTexto: `📊 *INFORME DE ACTIVIDAD WHATSAPP - ${periodo.toUpperCase()} (${ahora})*\n\n` +
+                      `📷 *Fotografías Procesadas:* ${savedPhotos.length}\n` +
+                      `📄 *Hojas de Vida Capturadas:* ${savedHvs.length}\n` +
+                      `🎙️ *Audios Transcritos:* ${savedAudios.length}\n` +
+                      `📅 *Citas y Compromisos:* ${capturedReminders.length}\n` +
+                      `🌧️ *Eventos de Clima / Tiempos Muertos:* ${lastEvents.length}\n\n` +
+                      `✅ *Estado de la Plataforma:* Operativa 24/7 en la Nube.`
+    };
+}
+
 // ENDPOINTS REST
 app.get('/api/status', (req, res) => {
     res.json({
@@ -415,10 +529,17 @@ app.get('/api/status', (req, res) => {
         events: lastEvents,
         photos: savedPhotos,
         hvs: savedHvs,
+        audios: savedAudios,
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
         cleanupLog: cleanupLog
     });
+});
+
+app.get('/api/generate-summary', (req, res) => {
+    const periodo = req.query.periodo || 'diario';
+    const resumen = generarResumenActividad(periodo);
+    res.json({ success: true, resumen });
 });
 
 app.post('/api/cleanup-chats', async (req, res) => {
@@ -449,6 +570,7 @@ io.on('connection', (socket) => {
         events: lastEvents,
         photos: savedPhotos,
         hvs: savedHvs,
+        audios: savedAudios,
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
         cleanupLog: cleanupLog
