@@ -14,6 +14,7 @@ const qrcode = require('qrcode');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const { MongoClient } = require('mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -24,6 +25,7 @@ const PORT = process.env.PORT || 3000;
 const GOOGLE_WEBHOOK_URL = process.env.GOOGLE_SHEETS_WEBHOOK_URL || '';
 const TARGET_FORWARD_CHAT_NAME = process.env.TARGET_FORWARD_CHAT_NAME || 'Gerencia Ingelec';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const MONGODB_URI = process.env.MONGODB_URI || '';
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -101,7 +103,27 @@ function detectarProfesion(texto) {
     return '📋 General / Otras Profesiones';
 }
 
-// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD
+// 🍃 CONEXIÓN A MONGODB ATLAS
+let mongoClient = null;
+let mongoDb = null;
+
+async function initMongoDB() {
+    if (!MONGODB_URI) return null;
+    try {
+        if (!mongoClient) {
+            mongoClient = new MongoClient(MONGODB_URI);
+            await mongoClient.connect();
+            mongoDb = mongoClient.db('whatsapp_bot');
+            console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Activa)');
+        }
+        return mongoDb;
+    } catch (e) {
+        console.error('⚠️ Error conectando a MongoDB Atlas:', e.message);
+        return null;
+    }
+}
+
+// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD (MONGODB ATLAS + LOCAL)
 async function guardarSesionEnNube() {
     if (!fs.existsSync(authDir)) return;
     try {
@@ -116,13 +138,26 @@ async function guardarSesionEnNube() {
         
         fs.writeFileSync(backupFile, JSON.stringify(sessionStore));
 
+        // Persistir en MongoDB Atlas
+        const db = await initMongoDB();
+        if (db) {
+            const collection = db.collection('session_auth');
+            for (const file in sessionStore) {
+                await collection.updateOne(
+                    { _id: file },
+                    { $set: { content: sessionStore[file], updatedAt: new Date() } },
+                    { upsert: true }
+                );
+            }
+            console.log('🔒 Sesión guardada con éxito en MongoDB Atlas.');
+        }
+
         if (GOOGLE_WEBHOOK_URL) {
             await axios.post(GOOGLE_WEBHOOK_URL, {
                 action: 'save_session',
                 sessionData: JSON.stringify(sessionStore)
             }).catch(() => {});
         }
-        console.log('🔒 Sesión guardada y respaldada en la nube.');
     } catch (e) {
         console.error('Error guardando sesión en nube:', e.message);
     }
@@ -132,6 +167,21 @@ async function restaurarSesionDesdeNube() {
     try {
         if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
 
+        // 1. Intentar restaurar desde MongoDB Atlas
+        const db = await initMongoDB();
+        if (db) {
+            const collection = db.collection('session_auth');
+            const docs = await collection.find({}).toArray();
+            if (docs && docs.length > 0) {
+                for (const doc of docs) {
+                    fs.writeFileSync(path.join(authDir, doc._id), doc.content);
+                }
+                console.log('🍃 Sesión restaurada con éxito desde MongoDB Atlas.');
+                return true;
+            }
+        }
+
+        // 2. Intentar restaurar desde respaldo local
         if (fs.existsSync(backupFile)) {
             const raw = fs.readFileSync(backupFile, 'utf-8');
             const sessionStore = JSON.parse(raw);
@@ -142,6 +192,7 @@ async function restaurarSesionDesdeNube() {
             return true;
         }
 
+        // 3. Intentar restaurar desde Webhook Cloud
         if (GOOGLE_WEBHOOK_URL) {
             const res = await axios.post(GOOGLE_WEBHOOK_URL, { action: 'get_session' }).catch(() => null);
             if (res && res.data && res.data.sessionData) {
@@ -149,7 +200,7 @@ async function restaurarSesionDesdeNube() {
                 for (const file in sessionStore) {
                     fs.writeFileSync(path.join(authDir, file), sessionStore[file]);
                 }
-                console.log('☁️ Sesión restaurada con éxito desde la nube de Google.');
+                console.log('☁️ Sesión restaurada con éxito desde Google Cloud.');
                 return true;
             }
         }
@@ -287,7 +338,7 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
 let sock = null;
 
 async function connectToWhatsApp() {
-    console.log('⚡ Iniciando conexión a WhatsApp con Persistencia Cloud...');
+    console.log('⚡ Iniciando conexión a WhatsApp con Persistencia MongoDB Atlas...');
     
     await restaurarSesionDesdeNube();
 
@@ -354,7 +405,6 @@ async function connectToWhatsApp() {
             await guardarSesionEnNube();
             io.emit('status-update', { status: connectionStatus, qr: null });
 
-            // Ejecutar escaneo silencioso de HVs al conectar
             setTimeout(() => {
                 escanearTodasLasHojasDeVidaHistoricas().catch(() => {});
             }, 5000);
