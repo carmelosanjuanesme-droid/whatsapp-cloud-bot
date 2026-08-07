@@ -33,6 +33,12 @@ if (!fs.existsSync(photosDir)) {
     fs.mkdirSync(photosDir, { recursive: true });
 }
 
+// Directorio reservorio para Hojas de Vida (CVs)
+const hvsDir = path.join(__dirname, 'public', 'downloads', 'hojas_de_vida');
+if (!fs.existsSync(hvsDir)) {
+    fs.mkdirSync(hvsDir, { recursive: true });
+}
+
 // Directorio de autenticación
 const authDir = path.join(__dirname, 'baileys_auth_info');
 if (!fs.existsSync(authDir)) {
@@ -44,6 +50,7 @@ let connectionStatus = 'INICIALIZANDO';
 let qrCodeDataUrl = null;
 let lastEvents = [];
 let savedPhotos = [];
+let savedHvs = [];
 let capturedReminders = [];
 let forwardingRules = [
     { tag: '#urgente', target: TARGET_FORWARD_CHAT_NAME, active: true },
@@ -64,6 +71,11 @@ const CALENDAR_KEYWORDS = [
     'boletas', 'coletas', 'entradas', 'viaje', 'vuelo', 'partido',
     ' de enero', ' de febrero', ' de marzo', ' de abril', ' de mayo', ' de junio',
     ' de julio', ' de agosto', ' de septiembre', ' de octubre', ' de noviembre', ' de diciembre'
+];
+
+const HV_KEYWORDS = [
+    'hoja de vida', 'hojadevida', 'curriculum', 'curriculum vitae', ' cv ', '_cv', 'cv_',
+    'perfil profesional', 'hoja de trabajo', 'postulacion', 'candidato', 'aspirante', 'hv'
 ];
 
 let sock = null;
@@ -131,7 +143,7 @@ async function connectToWhatsApp() {
         }
     });
 
-    // PROCESAMIENTO DE MENSAJES ENTRANTES (4 MÓDULOS)
+    // PROCESAMIENTO DE MENSAJES ENTRANTES (MÓDULOS DE GESTIÓN)
     sock.ev.on('messages.upsert', async (m) => {
         if (m.type !== 'notify') return;
 
@@ -147,15 +159,60 @@ async function connectToWhatsApp() {
             const textMessage = msg.message.conversation || 
                               msg.message.extendedTextMessage?.text || 
                               msg.message.imageMessage?.caption || 
-                              msg.message.videoMessage?.caption || '';
+                              msg.message.videoMessage?.caption || 
+                              msg.message.documentMessage?.caption || '';
             const textLower = textMessage.toLowerCase();
 
             const now = new Date();
             const dateStr = now.toISOString().split('T')[0];
             const timeStr = now.toTimeString().split(' ')[0];
 
+            // 📄 MÓDULO ESPECIAL: RESERVORIO DE HOJAS DE VIDA (CVs)
+            const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
+            const docName = docMsg?.fileName || '';
+            const combinedDocText = (docName + ' ' + textMessage).toLowerCase();
+            const isHV = HV_KEYWORDS.some(kw => combinedDocText.includes(kw));
+
+            if (isHV || (docMsg && (docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv')))) {
+                try {
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                    if (buffer) {
+                        const ext = docName ? path.extname(docName) : '.pdf';
+                        const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+                        const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
+                        const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
+
+                        const filename = `HV_${dateStr}_${safeSender}_${safeGroup}_${cleanDoc}${ext.startsWith('.') ? ext : '.' + ext}`;
+                        const filePath = path.join(hvsDir, filename);
+
+                        fs.writeFileSync(filePath, buffer);
+
+                        const hvData = {
+                            id: Date.now(),
+                            fecha: dateStr,
+                            hora: timeStr,
+                            grupo: groupName,
+                            remitente: senderName,
+                            nombreArchivo: filename,
+                            nombreOriginal: docName || 'Hoja_de_Vida.pdf',
+                            descripcion: textMessage || 'Hoja de vida recibida por WhatsApp',
+                            url: `/downloads/hojas_de_vida/${filename}`,
+                            tamano: (buffer.length / 1024).toFixed(1) + ' KB'
+                        };
+
+                        savedHvs.unshift(hvData);
+                        if (savedHvs.length > 100) savedHvs.pop();
+
+                        io.emit('new-hv', hvData);
+                        console.log(`📄 Hoja de Vida guardada en reservorio: ${filename}`);
+                    }
+                } catch (err) {
+                    console.error('Error procesando Hoja de Vida:', err.message);
+                }
+            }
+
             // 📷 MÓDULO 1: GESTIÓN Y ORGANIZACIÓN DE FOTOS
-            if (msg.message.imageMessage) {
+            if (msg.message.imageMessage && !isHV) {
                 try {
                     const buffer = await downloadMediaMessage(msg, 'buffer', {});
                     if (buffer) {
@@ -332,6 +389,7 @@ app.get('/api/status', (req, res) => {
         qr: qrCodeDataUrl,
         events: lastEvents,
         photos: savedPhotos,
+        hvs: savedHvs,
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
         cleanupLog: cleanupLog
@@ -365,6 +423,7 @@ io.on('connection', (socket) => {
         qr: qrCodeDataUrl,
         events: lastEvents,
         photos: savedPhotos,
+        hvs: savedHvs,
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
         cleanupLog: cleanupLog

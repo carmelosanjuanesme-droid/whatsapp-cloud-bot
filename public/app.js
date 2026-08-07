@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const photosGrid = document.getElementById('photosGrid');
     const photoCounter = document.getElementById('photoCounter');
 
+    const hvsGrid = document.getElementById('hvsGrid');
+    const hvCounter = document.getElementById('hvCounter');
+
     const remindersList = document.getElementById('remindersList');
     const reminderCounter = document.getElementById('reminderCounter');
 
@@ -23,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let totalEvents = 0;
     let totalPhotos = 0;
+    let totalHvs = 0;
     let totalReminders = 0;
 
     // 1. Manejo de Pestañas (Nav Tabs)
@@ -42,12 +46,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 2. Escuchar Estado Inicial e Historial Completo
     socket.on('status-update', (data) => {
-        const { status, qr, events, photos, reminders, forwardingRules, cleanupLog } = data;
+        const { status, qr, events, photos, hvs, reminders, forwardingRules, cleanupLog } = data;
 
         updateStatusUI(status, qr);
 
         if (events) renderEvents(events);
         if (photos) renderPhotos(photos);
+        if (hvs) renderHvs(hvs);
         if (reminders) renderReminders(reminders);
         if (cleanupLog) renderCleanupLogs(cleanupLog);
     });
@@ -61,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateStatusUI(data.status, data.qr);
                 if (data.events && data.events.length > 0) renderEvents(data.events);
                 if (data.photos && data.photos.length > 0) renderPhotos(data.photos);
+                if (data.hvs && data.hvs.length > 0) renderHvs(data.hvs);
                 if (data.reminders && data.reminders.length > 0) renderReminders(data.reminders);
             }
         } catch (e) {}
@@ -72,6 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Escuchar Eventos en Tiempo Real
     socket.on('new-event', (evt) => addEventToUI(evt, true));
     socket.on('new-photo', (photo) => addPhotoToUI(photo, true));
+    socket.on('new-hv', (hv) => addHvToUI(hv, true));
     socket.on('new-reminder', (rem) => addReminderToUI(rem, true));
     socket.on('new-log', (log) => addForwardLogToUI(log));
     socket.on('cleanup-completed', (report) => renderCleanupLogs([report]));
@@ -126,19 +133,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusBadge.style.color = '#10b981';
                 qrImage.style.display = 'none';
                 spinner.style.display = 'none';
-                statusMessage.textContent = '✅ WhatsApp Conectado y Ejecutando los 4 Módulos.';
+                statusMessage.innerHTML = '✅ <strong>WhatsApp Conectado y Ejecutando los 4 Módulos.</strong>';
                 statusMessage.style.display = 'block';
                 statusMessage.style.color = '#10b981';
                 break;
 
             case 'DESCONECTADO':
-                statusDot.className = 'status-dot';
+            default:
+                statusDot.className = 'status-dot disconnected';
                 statusBadge.textContent = 'Desconectado';
                 statusBadge.style.color = '#ef4444';
                 qrImage.style.display = 'none';
                 spinner.style.display = 'block';
-                statusMessage.textContent = 'Reintentando conexión...';
+                statusMessage.textContent = 'Reconectando con WhatsApp...';
                 statusMessage.style.display = 'block';
+                statusMessage.style.color = '#ef4444';
                 break;
         }
     }
@@ -146,135 +155,159 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderEvents(events) {
         eventsList.innerHTML = '';
         totalEvents = events.length;
-        eventCounter.textContent = `${totalEvents} eventos`;
+        if (eventCounter) eventCounter.textContent = `${totalEvents} eventos`;
+
         if (events.length === 0) {
-            eventsList.innerHTML = '<div class="empty-state">No hay eventos de lluvia registrados.</div>';
+            eventsList.innerHTML = '<div class="empty-state"><p>No hay eventos de lluvia registrados.</p></div>';
             return;
         }
+
         events.forEach(evt => addEventToUI(evt, false));
     }
 
-    function addEventToUI(evt, isNew) {
+    function addEventToUI(evt, isNew = false) {
         const item = document.createElement('div');
-        item.className = 'event-item';
+        item.className = `event-item ${isNew ? 'new-item' : ''}`;
         item.innerHTML = `
             <div class="event-meta">
-                <span>📅 ${evt.fecha} - ⏰ ${evt.hora}</span>
-                <span>👤 ${escapeHtml(evt.remitente)}</span>
+                <span class="event-tag">🌧️ Clima</span>
+                <span>📅 ${evt.fecha} ${evt.hora}</span>
+                <span>📌 Chat: <strong>${evt.proyecto}</strong></span>
+                <span>👤 ${evt.remitente}</span>
             </div>
-            <div class="event-project">📌 ${escapeHtml(evt.proyecto)}</div>
-            <div class="event-text">"${escapeHtml(evt.mensaje)}"</div>
+            <div class="event-body">${evt.mensaje}</div>
         `;
-        if (isNew) {
-            eventsList.insertBefore(item, eventsList.firstChild);
-            totalEvents++;
-            eventCounter.textContent = `${totalEvents} eventos`;
-        } else {
-            eventsList.appendChild(item);
-        }
+        eventsList.prepend(item);
     }
 
     function renderPhotos(photos) {
         photosGrid.innerHTML = '';
         totalPhotos = photos.length;
-        photoCounter.textContent = `${totalPhotos} fotos`;
+        if (photoCounter) photoCounter.textContent = `${totalPhotos} fotos`;
+
         if (photos.length === 0) {
-            photosGrid.innerHTML = '<div class="empty-state">No se han recibido fotografías aún.</div>';
+            photosGrid.innerHTML = '<div class="empty-state">No se han recibido fotografías en los grupos.</div>';
             return;
         }
-        photos.forEach(p => addPhotoToUI(p, false));
+
+        photos.forEach(photo => addPhotoToUI(photo, false));
     }
 
-    function addPhotoToUI(photo, isNew) {
+    function addPhotoToUI(photo, isNew = false) {
         const card = document.createElement('div');
-        card.className = 'photo-card';
+        card.className = `photo-card ${isNew ? 'new-item' : ''}`;
         card.innerHTML = `
-            <img src="${photo.url}" alt="Foto de Obra" loading="lazy" onerror="this.src='https://via.placeholder.com/300x200?text=Foto+Procesada'">
+            <img src="${photo.url}" alt="${photo.descripcion}" loading="lazy">
             <div class="photo-info">
-                <span class="photo-title">📌 ${escapeHtml(photo.proyecto)}</span>
-                <span class="photo-desc">👤 ${escapeHtml(photo.remitente)}</span>
-                <span class="photo-desc">📅 ${photo.fecha} ${photo.hora}</span>
-                <span class="photo-desc">💬 "${escapeHtml(photo.descripcion)}"</span>
+                <div class="photo-title">📁 ${photo.grupo}</div>
+                <div class="photo-desc">💬 ${photo.descripcion}</div>
+                <div class="photo-meta">
+                    <span>👤 ${photo.remitente}</span>
+                    <span>🕒 ${photo.fecha} ${photo.hora}</span>
+                </div>
+                <a href="${photo.url}" download="${photo.nombreArchivo}" class="btn-download">⬇️ Descargar Foto HD</a>
             </div>
         `;
-        if (isNew) {
-            photosGrid.insertBefore(card, photosGrid.firstChild);
-            totalPhotos++;
-            photoCounter.textContent = `${totalPhotos} fotos`;
-        } else {
-            photosGrid.appendChild(card);
+        photosGrid.prepend(card);
+    }
+
+    // Renderizado de Hojas de Vida (CVs)
+    function renderHvs(hvs) {
+        hvsGrid.innerHTML = '';
+        totalHvs = hvs.length;
+        if (hvCounter) hvCounter.textContent = `${totalHvs} HVs`;
+
+        if (hvs.length === 0) {
+            hvsGrid.innerHTML = '<div class="empty-state">No se han recibido Hojas de Vida en tus chats por el momento.</div>';
+            return;
         }
+
+        hvs.forEach(hv => addHvToUI(hv, false));
+    }
+
+    function addHvToUI(hv, isNew = false) {
+        const card = document.createElement('div');
+        card.className = `photo-card hv-card ${isNew ? 'new-item' : ''}`;
+        card.style.background = 'rgba(30, 41, 59, 0.7)';
+        card.style.border = '1px solid rgba(148, 163, 184, 0.3)';
+        card.style.padding = '16px';
+        card.style.borderRadius = '12px';
+        card.innerHTML = `
+            <div style="font-size: 40px; text-align: center; margin-bottom: 10px;">📄</div>
+            <div class="photo-info">
+                <div class="photo-title" style="color: #60a5fa; font-weight: bold;">👤 ${hv.remitente}</div>
+                <div class="photo-desc" style="color: #cbd5e1; font-size: 13px; margin: 6px 0;">💬 ${hv.descripcion}</div>
+                <div class="photo-meta" style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8;">
+                    <span>📌 Chat: <strong>${hv.grupo}</strong></span>
+                    <span>🕒 Fecha: ${hv.fecha} ${hv.hora}</span>
+                    <span>📦 Archivo: ${hv.nombreOriginal} (${hv.tamano})</span>
+                </div>
+                <a href="${hv.url}" download="${hv.nombreArchivo}" target="_blank" class="btn-download" style="display: block; text-align: center; margin-top: 12px; background: #2563eb; color: #fff; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600;">📄 Abrir / Descargar Hoja de Vida</a>
+            </div>
+        `;
+        hvsGrid.prepend(card);
     }
 
     function renderReminders(reminders) {
         remindersList.innerHTML = '';
         totalReminders = reminders.length;
-        reminderCounter.textContent = `${totalReminders} citas`;
+        if (reminderCounter) reminderCounter.textContent = `${totalReminders} citas`;
+
         if (reminders.length === 0) {
-            remindersList.innerHTML = '<div class="empty-state">No se han detectado citas o compromisos.</div>';
+            remindersList.innerHTML = '<div class="empty-state">No hay citas ni compromisos registrados por el momento.</div>';
             return;
         }
-        reminders.forEach(r => addReminderToUI(r, false));
+
+        reminders.forEach(rem => addReminderToUI(rem, false));
     }
 
-    function addReminderToUI(rem, isNew) {
+    function addReminderToUI(rem, isNew = false) {
         const item = document.createElement('div');
-        item.className = 'event-item';
+        item.className = `event-item ${isNew ? 'new-item' : ''}`;
         item.innerHTML = `
             <div class="event-meta">
-                <span>📅 Capturado el ${rem.fechaCaptura}</span>
-                <span>👤 ${escapeHtml(rem.remitente)}</span>
+                <span class="event-tag" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">📅 Cita Detectada</span>
+                <span>🕒 Detectado: ${rem.fechaDetec}</span>
+                <span>📌 Chat: <strong>${rem.origen}</strong></span>
+                <span>👤 ${rem.remitente}</span>
             </div>
-            <div class="event-project">📌 ${escapeHtml(rem.proyecto)}</div>
-            <div class="event-text">💬 "${escapeHtml(rem.detalle)}"</div>
+            <div class="event-body">${rem.mensaje}</div>
         `;
-        if (isNew) {
-            remindersList.insertBefore(item, remindersList.firstChild);
-            totalReminders++;
-            reminderCounter.textContent = `${totalReminders} citas`;
-        } else {
-            remindersList.appendChild(item);
-        }
+        remindersList.prepend(item);
     }
 
     function addForwardLogToUI(log) {
         const item = document.createElement('div');
-        item.className = 'event-item';
+        item.className = 'event-item new-item';
         item.innerHTML = `
             <div class="event-meta">
-                <span>🔁 Reenviado de: ${escapeHtml(log.origen)}</span>
-                <span>➔ Hacia: ${escapeHtml(log.destino)}</span>
+                <span class="event-tag" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">🔁 Reenviado</span>
+                <span>🕒 ${log.hora}</span>
+                <span>De: <strong>${log.origen}</strong></span>
+                <span>Para: <strong>${log.destino}</strong></span>
             </div>
-            <div class="event-text">"${escapeHtml(log.mensaje)}"</div>
+            <div class="event-body">${log.mensaje}</div>
         `;
-        forwardLogsList.insertBefore(item, forwardLogsList.firstChild);
+        forwardLogsList.prepend(item);
     }
 
-    function renderCleanupLogs(logs) {
-        if (!logs || logs.length === 0) return;
+    function renderCleanupLogs(reports) {
         cleanupLogsList.innerHTML = '';
-        logs.forEach(report => {
+        reports.forEach(rep => {
             const item = document.createElement('div');
             item.className = 'event-item';
             item.innerHTML = `
                 <div class="event-meta">
-                    <span>🧹 Escaneo del ${new Date(report.fechaEjecucion).toLocaleString()}</span>
-                    <span>📦 Archivados: ${report.totalArchivados} de ${report.totalEscaneados} chats</span>
+                    <span class="event-tag" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">🧹 Limpieza Ejecutada</span>
+                    <span>🕒 ${new Date(rep.fechaEjecucion).toLocaleString()}</span>
+                    <span>Escaneados: <strong>${rep.totalEscaneados}</strong></span>
+                    <span>Archivados: <strong style="color: #10b981;">${rep.totalArchivados}</strong></span>
                 </div>
-                <div class="event-text">
-                    ${report.detalles.length === 0 ? 'No se encontraron chats con más de 6 meses de inactividad.' :
-                      report.detalles.map(d => `• <strong>${escapeHtml(d.chat)}</strong>: ${d.diasInactivo} días inactivo (Archivado)`).join('<br>')}
+                <div class="event-body" style="font-size: 12px; color: #94a3b8; max-height: 100px; overflow-y: auto;">
+                    ${rep.detalles.map(d => `• ${d.nombre}: ${d.accion}`).join('<br>')}
                 </div>
             `;
-            cleanupLogsList.appendChild(item);
+            cleanupLogsList.prepend(item);
         });
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;')
-                  .replace(/</g, '&lt;')
-                  .replace(/>/g, '&gt;')
-                  .replace(/"/g, '&quot;');
     }
 });

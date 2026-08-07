@@ -22,7 +22,7 @@
                 <div class="status-dot pulsing" id="statusDot"></div>
                 <div>
                     <h1>WhatsApp Automation Hub 24/7</h1>
-                    <p class="subtitle">Plataforma Multifuncional: Fotos, Reenvíos, Citas y Limpieza de Chats</p>
+                    <p class="subtitle">Plataforma Multifuncional: Hojas de Vida, Fotos, Reenvíos, Citas y Limpieza</p>
                 </div>
             </div>
             <div class="status-badge" id="statusBadge">Conectando...</div>
@@ -31,6 +31,7 @@
         <!-- Navegación por Pestañas (Tabs) -->
         <nav class="nav-tabs glass-card">
             <button class="tab-btn active" data-tab="tab-monitor">📌 Monitoreo & QR</button>
+            <button class="tab-btn" data-tab="tab-hvs">📄 Hojas de Vida (CVs)</button>
             <button class="tab-btn" data-tab="tab-photos">📷 Fotos & Reportes</button>
             <button class="tab-btn" data-tab="tab-forward">🔁 Reenvío entre Chats</button>
             <button class="tab-btn" data-tab="tab-reminders">📅 Citas & Recordatorios</button>
@@ -64,6 +65,21 @@
                         </div>
                     </section>
                 </div>
+            </div>
+
+            <!-- PESTAÑA NUEVA: HOJAS DE VIDA (CVs) -->
+            <div class="tab-pane" id="tab-hvs">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>📄 Reservorio Especial de Hojas de Vida (CVs)</h2>
+                        <span class="event-counter" id="hvCounter">0 HVs</span>
+                    </div>
+                    <p class="section-desc">Documentos PDF, Word e imágenes de Hojas de Vida capturadas automáticamente de tus chats:</p>
+                    
+                    <div class="photos-grid" id="hvsGrid">
+                        <div class="empty-state">No se han recibido Hojas de Vida en tus chats por el momento.</div>
+                    </div>
+                </section>
             </div>
 
             <!-- PESTAÑA 2: FOTOS & REPORTES -->
