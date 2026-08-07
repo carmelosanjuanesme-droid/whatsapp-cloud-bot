@@ -116,6 +116,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (hvSortSelect) hvSortSelect.addEventListener('change', () => renderHvs(currentHvsList));
     if (hvFilterSelect) hvFilterSelect.addEventListener('change', () => renderHvs(currentHvsList));
 
+    const btnScanAllHvs = document.getElementById('btnScanAllHvs');
+    if (btnScanAllHvs) {
+        btnScanAllHvs.addEventListener('click', async () => {
+            btnScanAllHvs.disabled = true;
+            btnScanAllHvs.textContent = '⏳ Escaneando mensajes en todos tus chats...';
+
+            try {
+                const response = await fetch('/api/scan-history-hvs', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    alert(`✅ Escaneo retroactivo completado: ${data.resultado.hvsEncontradas} Hojas de Vida rescatadas de ${data.resultado.chatsEscaneados} chats.`);
+                } else {
+                    alert(`⚠️ Error escaneando chats: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error en escaneo de chats: ${err.message}`);
+            } finally {
+                btnScanAllHvs.disabled = false;
+                btnScanAllHvs.textContent = '🔍 Escanear Todos los Chats de WhatsApp (Buscar HVs Históricas)';
+            }
+        });
+    }
+
     // Generador de Resúmenes Periódicos
     if (btnSummaryDaily) btnSummaryDaily.addEventListener('click', () => fetchSummary('diario'));
     if (btnSummaryWeekly) btnSummaryWeekly.addEventListener('click', () => fetchSummary('semanal'));

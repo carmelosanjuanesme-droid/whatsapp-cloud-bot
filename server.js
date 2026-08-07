@@ -101,7 +101,7 @@ function detectarProfesion(texto) {
     return '📋 General / Otras Profesiones';
 }
 
-// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD (CERO PÉRDIDA AL REINICIAR)
+// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD
 async function guardarSesionEnNube() {
     if (!fs.existsSync(authDir)) return;
     try {
@@ -132,7 +132,6 @@ async function restaurarSesionDesdeNube() {
     try {
         if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
 
-        // 1. Restaurar desde respaldo local
         if (fs.existsSync(backupFile)) {
             const raw = fs.readFileSync(backupFile, 'utf-8');
             const sessionStore = JSON.parse(raw);
@@ -143,7 +142,6 @@ async function restaurarSesionDesdeNube() {
             return true;
         }
 
-        // 2. Restaurar desde Webhook Cloud
         if (GOOGLE_WEBHOOK_URL) {
             const res = await axios.post(GOOGLE_WEBHOOK_URL, { action: 'get_session' }).catch(() => null);
             if (res && res.data && res.data.sessionData) {
@@ -206,12 +204,91 @@ async function transcribirAudioIA(audioFilePath) {
     return '🎙️ [Nota de voz recibida y registrada. Transcripción lista para procesamiento por IA]';
 }
 
+// 🔍 ESCÁNER RETROACTIVO DE HOJAS DE VIDA EN TODOS LOS CHATS
+async function escanearTodasLasHojasDeVidaHistoricas() {
+    if (!sock) throw new Error('Cliente WhatsApp no inicializado');
+
+    console.log('🔍 Iniciando escaneo retroactivo de Hojas de Vida en todos los chats...');
+    let hvsEncontradas = 0;
+    let chatsEscaneados = 0;
+
+    try {
+        const groups = await sock.groupFetchAllParticipating();
+
+        for (const jid in groups) {
+            chatsEscaneados++;
+            const groupName = groups[jid].subject || 'Grupo_WhatsApp';
+
+            try {
+                const messages = await sock.fetchMessagesFromChat(jid, { limit: 100 }).catch(() => []);
+
+                for (const msg of messages) {
+                    if (!msg.message) continue;
+
+                    const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
+                    const docName = docMsg?.fileName || '';
+                    const caption = docMsg?.caption || msg.message.conversation || '';
+                    const combinedDocText = (docName + ' ' + caption).toLowerCase();
+                    const isHV = HV_KEYWORDS.some(kw => combinedDocText.includes(kw));
+
+                    if (isHV || (docMsg && (docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv')))) {
+                        try {
+                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                            if (buffer) {
+                                const senderJid = msg.key.participant || msg.key.remoteJid;
+                                const senderName = msg.pushName || senderJid.split('@')[0];
+                                const ext = docName ? path.extname(docName) : '.pdf';
+                                const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
+                                const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+                                const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
+                                const profesion = detectarProfesion(combinedDocText);
+
+                                const filename = `HV_Hist_${safeSender}_${safeGroup}_${cleanDoc}${ext.startsWith('.') ? ext : '.' + ext}`;
+                                const filePath = path.join(hvsDir, filename);
+
+                                if (!fs.existsSync(filePath)) {
+                                    fs.writeFileSync(filePath, buffer);
+
+                                    const hvData = {
+                                        id: Date.now() + Math.floor(Math.random() * 1000),
+                                        fecha: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000).toISOString().split('T')[0],
+                                        hora: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000).toTimeString().split(' ')[0],
+                                        grupo: groupName,
+                                        remitente: senderName,
+                                        profesion: profesion,
+                                        nombreArchivo: filename,
+                                        nombreOriginal: docName || 'Hoja_de_Vida.pdf',
+                                        descripcion: caption || 'Hoja de vida histórica rescatada de chat',
+                                        url: `/downloads/hojas_de_vida/${filename}`,
+                                        tamano: (buffer.length / 1024).toFixed(1) + ' KB'
+                                    };
+
+                                    savedHvs.unshift(hvData);
+                                    hvsEncontradas++;
+                                    io.emit('new-hv', hvData);
+                                    respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                }
+            } catch (err) {
+                console.error(`Error escaneando chat ${groupName}:`, err.message);
+            }
+        }
+    } catch (err) {
+        console.error('Error general en escaneo retroactivo:', err.message);
+    }
+
+    console.log(`✅ Escaneo completado: ${hvsEncontradas} Hojas de Vida rescatadas de ${chatsEscaneados} chats.`);
+    return { chatsEscaneados, hvsEncontradas, totalHvs: savedHvs.length };
+}
+
 let sock = null;
 
 async function connectToWhatsApp() {
     console.log('⚡ Iniciando conexión a WhatsApp con Persistencia Cloud...');
     
-    // Restaurar credenciales automáticamente
     await restaurarSesionDesdeNube();
 
     connectionStatus = 'INICIALIZANDO';
@@ -276,6 +353,11 @@ async function connectToWhatsApp() {
             qrCodeDataUrl = null;
             await guardarSesionEnNube();
             io.emit('status-update', { status: connectionStatus, qr: null });
+
+            // Ejecutar escaneo silencioso de HVs al conectar
+            setTimeout(() => {
+                escanearTodasLasHojasDeVidaHistoricas().catch(() => {});
+            }, 5000);
         }
     });
 
@@ -303,7 +385,7 @@ async function connectToWhatsApp() {
             const dateStr = now.toISOString().split('T')[0];
             const timeStr = now.toTimeString().split(' ')[0];
 
-            // 🎙️ NUEVO MÓDULO: TRANSCRIPCIÓN Y AUTO-RESPUESTA DE AUDIOS DE VOZ
+            // 🎙️ AUDIOS Y TRANSCRIPCIÓN IA
             if (msg.message.audioMessage) {
                 try {
                     console.log(`🎙️ Nota de voz recibida de ${senderName} en ${groupName}`);
@@ -343,7 +425,7 @@ async function connectToWhatsApp() {
                 }
             }
 
-            // 📄 MÓDULO ESPECIAL: RESERVORIO DE HOJAS DE VIDA (CVs)
+            // 📄 HOJAS DE VIDA (CVs)
             const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
             const docName = docMsg?.fileName || '';
             const combinedDocText = (docName + ' ' + textMessage).toLowerCase();
@@ -391,7 +473,7 @@ async function connectToWhatsApp() {
                 }
             }
 
-            // 📷 MÓDULO 1: GESTIÓN Y ORGANIZACIÓN DE FOTOS
+            // 📷 FOTOS
             if (msg.message.imageMessage && !isHV) {
                 try {
                     const buffer = await downloadMediaMessage(msg, 'buffer', {});
@@ -429,7 +511,7 @@ async function connectToWhatsApp() {
                 }
             }
 
-            // 🌧️ REGISTRO DE EVENTOS DE CLIMA Y TIEMPOS MUERTOS
+            // 🌧️ CLIMA Y TIEMPOS MUERTOS
             const hasWeatherEvent = WEATHER_KEYWORDS.some(kw => textLower.includes(kw));
             if (hasWeatherEvent && textMessage.length > 0) {
                 const eventData = {
@@ -454,7 +536,7 @@ async function connectToWhatsApp() {
                 }
             }
 
-            // 📅 MÓDULO 3: CITAS Y RECORDATORIOS
+            // 📅 CITAS Y RECORDATORIOS
             const hasCalendarEvent = CALENDAR_KEYWORDS.some(kw => textLower.includes(kw));
             if (hasCalendarEvent && textMessage.length > 0) {
                 const reminderData = {
@@ -473,7 +555,7 @@ async function connectToWhatsApp() {
                 console.log(`📅 Cita/Compromiso detectado: "${textMessage}"`);
             }
 
-            // 🔁 MÓDULO 2: REENVÍO INTELIGENTE ENTRE CHATS
+            // 🔁 REENVÍO INTELIGENTE
             for (const rule of forwardingRules) {
                 if (rule.active && textLower.includes(rule.tag.toLowerCase())) {
                     console.log(`🔁 Reenvío activado por etiqueta ${rule.tag} desde ${groupName}`);
@@ -506,7 +588,7 @@ async function connectToWhatsApp() {
     });
 }
 
-// 🧹 MÓDULO 4: LIMPIEZA DE CHATS INACTIVOS (> 6 MESES)
+// 🧹 LIMPIEZA DE CHATS INACTIVOS
 async function ejecutarLimpiezaChatsInactivos(diasLimite = 180) {
     if (!sock) throw new Error('Cliente WhatsApp no inicializado');
 
@@ -564,7 +646,7 @@ async function ejecutarLimpiezaChatsInactivos(diasLimite = 180) {
     return reportResult;
 }
 
-// 📊 SINTETIZADOR DE RESÚMENES DE ACTIVIDAD
+// 📊 SINTETIZADOR DE RESÚMENES
 function generarResumenActividad(periodo = 'diario') {
     const ahora = new Date().toLocaleDateString('es-CO');
     
@@ -599,6 +681,15 @@ app.get('/api/status', (req, res) => {
         forwardingRules: forwardingRules,
         cleanupLog: cleanupLog
     });
+});
+
+app.post('/api/scan-history-hvs', async (req, res) => {
+    try {
+        const resultado = await escanearTodasLasHojasDeVidaHistoricas();
+        res.json({ success: true, resultado });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 app.get('/api/generate-summary', (req, res) => {
