@@ -65,20 +65,16 @@ const puppeteerArgs = [
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-    },
     puppeteer: {
         headless: true,
         args: puppeteerArgs,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
     }
 });
 
 // Eventos de estado WhatsApp
 client.on('qr', async (qr) => {
-    console.log('📌 Código QR generado. Escanéalo desde tu iPhone.');
+    console.log('📌 Código QR generado con éxito. Listo para escanear.');
     connectionStatus = 'ESPERANDO_QR';
     try {
         qrCodeDataUrl = await qrcode.toDataURL(qr);
@@ -86,6 +82,18 @@ client.on('qr', async (qr) => {
     } catch (err) {
         console.error('Error generando QR DataURL:', err);
     }
+});
+
+client.on('loading_screen', (percent, message) => {
+    console.log(`⏳ Cargando WhatsApp Web: ${percent}% - ${message}`);
+    connectionStatus = `CARGANDO (${percent}%)`;
+    io.emit('status-update', { status: connectionStatus, qr: null });
+});
+
+client.on('auth_failure', (msg) => {
+    console.error('❌ Error de autenticación:', msg);
+    connectionStatus = 'ERROR_AUTENTICACION';
+    io.emit('status-update', { status: connectionStatus, qr: null, error: msg });
 });
 
 client.on('authenticated', () => {
@@ -353,5 +361,9 @@ app.post('/api/forwarding-rules', (req, res) => {
 server.listen(PORT, () => {
     console.log(`🌐 Servidor Hub WhatsApp escuchando en puerto ${PORT}`);
     console.log('Inicializando cliente de WhatsApp...');
-    client.initialize().catch(err => console.error('❌ Error inicializando WhatsApp:', err));
+    client.initialize().catch(err => {
+        console.error('❌ Error inicializando WhatsApp:', err);
+        connectionStatus = 'ERROR_INICIALIZACION';
+        io.emit('status-update', { status: connectionStatus, qr: null, error: err.message });
+    });
 });
