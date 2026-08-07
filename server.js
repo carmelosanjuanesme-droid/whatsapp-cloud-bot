@@ -58,8 +58,12 @@ const WEATHER_KEYWORDS = [
 ];
 
 const CALENDAR_KEYWORDS = [
-    'reunión', 'reunion', 'cita', 'nos vemos', 'agendar',
-    'mañana a las', 'el viernes', 'el lunes', 'revisión de planos', 'compromiso'
+    'reunión', 'reunion', 'cita', 'nos vemos', 'agendar', 'agenda',
+    'mañana a las', 'el viernes', 'el lunes', 'revisión de planos', 'compromiso',
+    'recuerda', 'recuerde', 'recordar', 'tenemos', 'concierto', 'evento',
+    'boletas', 'coletas', 'entradas', 'viaje', 'vuelo', 'partido',
+    ' de enero', ' de febrero', ' de marzo', ' de abril', ' de mayo', ' de junio',
+    ' de julio', ' de agosto', ' de septiembre', ' de octubre', ' de noviembre', ' de diciembre'
 ];
 
 let sock = null;
