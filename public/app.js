@@ -132,10 +132,67 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (err) {
                 alert(`Error en escaneo de chats: ${err.message}`);
-            } finally {
-                btnScanAllHvs.disabled = false;
-                btnScanAllHvs.textContent = '🔍 Escanear Todos los Chats de WhatsApp (Buscar HVs Históricas)';
+        });
+    }
+
+    // 🔍 BUSCADOR UNIVERSAL DE CONTENIDOS EN TIEMPO REAL
+    const globalSearchInput = document.getElementById('globalSearchInput');
+    const btnGlobalSearch = document.getElementById('btnGlobalSearch');
+    const searchResultsContainer = document.getElementById('searchResultsContainer');
+    const searchResultsHeader = document.getElementById('searchResultsHeader');
+    const searchResultsList = document.getElementById('searchResultsList');
+
+    if (btnGlobalSearch && globalSearchInput) {
+        const ejecutarBusqueda = async () => {
+            const query = globalSearchInput.value.trim();
+            if (!query) {
+                searchResultsContainer.style.display = 'none';
+                return;
             }
+
+            btnGlobalSearch.textContent = '⏳ Buscando...';
+            btnGlobalSearch.disabled = true;
+
+            try {
+                const res = await fetch(`/api/search-content?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+
+                if (data.success) {
+                    searchResultsHeader.textContent = `🔍 ${data.total} resultados encontrados para "${query}":`;
+                    searchResultsList.innerHTML = '';
+
+                    if (data.resultados.length === 0) {
+                        searchResultsList.innerHTML = '<div style="color: #94a3b8; font-size: 13px; padding: 8px;">No se encontraron mensajes, audios ni archivos con esa palabra clave.</div>';
+                    } else {
+                        data.resultados.forEach(item => {
+                            const el = document.createElement('div');
+                            el.className = 'event-card';
+                            el.style.marginBottom = '8px';
+                            el.innerHTML = `
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-size: 11px;">${item.tipo}</span>
+                                    <span style="font-size: 11px; color: #64748b;">${item.fecha}</span>
+                                </div>
+                                <div style="font-size: 12px; color: #38bdf8; margin-top: 4px;">👤 <b>${item.remitente}</b> en <i>${item.chat}</i></div>
+                                <div style="font-size: 13px; color: #f8fafc; margin-top: 4px;">"${item.contenido}"</div>
+                                ${item.url ? `<a href="${item.url}" target="_blank" style="display: inline-block; margin-top: 6px; font-size: 12px; color: #34d399; text-decoration: underline;">📂 Abrir Archivo / Audio</a>` : ''}
+                            `;
+                            searchResultsList.appendChild(el);
+                        });
+                    }
+                    searchResultsContainer.style.display = 'block';
+                }
+            } catch (err) {
+                alert('Error realizando búsqueda de contenido.');
+            } finally {
+                btnGlobalSearch.textContent = '🔍 Buscar Contenido';
+                btnGlobalSearch.disabled = false;
+            }
+        };
+
+        btnGlobalSearch.addEventListener('click', ejecutarBusqueda);
+        globalSearchInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') ejecutarBusqueda();
         });
     }
 

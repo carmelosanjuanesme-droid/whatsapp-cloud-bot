@@ -54,7 +54,8 @@ let savedPhotos = [];
 let savedHvs = [];
 let savedAudios = [];
 let capturedReminders = [];
-let savedContacts = {}; // 📱 AGENDA DE CONTACTOS SINCRONIZADA
+let savedContacts = {};
+let messageHistoryStore = []; // 🔍 HISTORIAL DE MENSAJES PARA BÚSQUEDA
 let forwardingRules = [
     { tag: '#urgente', target: TARGET_FORWARD_CHAT_NAME, active: true },
     { tag: '#gerencia', target: TARGET_FORWARD_CHAT_NAME, active: true },
@@ -131,7 +132,7 @@ async function initMongoDB() {
     }
 }
 
-// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD (MONGODB ATLAS + LOCAL)
+// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD
 async function guardarSesionEnNube() {
     if (!fs.existsSync(authDir)) return;
     try {
@@ -259,6 +260,71 @@ async function transcribirAudioIA(audioFilePath) {
     return '🎙️ [Nota de voz recibida y registrada. Transcripción lista para procesamiento por IA]';
 }
 
+// 🔍 MOTOR DE BÚSQUEDA UNIVERSAL EN CHATS, GRUPOS Y ARCHIVOS
+async function buscarContenidosUniversal(query) {
+    const term = (query || '').toLowerCase().trim();
+    if (!term) return { resultados: [], total: 0 };
+
+    const resultados = [];
+
+    // 1. Buscar en mensajes de chats almacenados
+    for (const msg of messageHistoryStore) {
+        if ((msg.texto || '').toLowerCase().includes(term) || (msg.remitente || '').toLowerCase().includes(term) || (msg.grupo || '').toLowerCase().includes(term)) {
+            resultados.push({
+                tipo: '💬 Mensaje de Chat',
+                fecha: `${msg.fecha} ${msg.hora}`,
+                chat: msg.grupo,
+                remitente: msg.remitente,
+                contenido: msg.texto
+            });
+        }
+    }
+
+    // 2. Buscar en Transcripciones de Audios de Voz
+    for (const audio of savedAudios) {
+        if ((audio.transcripcion || '').toLowerCase().includes(term) || (audio.remitente || '').toLowerCase().includes(term) || (audio.grupo || '').toLowerCase().includes(term)) {
+            resultados.push({
+                tipo: '🎙️ Audio Transcrito por IA',
+                fecha: `${audio.fecha} ${audio.hora}`,
+                chat: audio.grupo,
+                remitente: audio.remitente,
+                contenido: audio.transcripcion,
+                url: audio.url
+            });
+        }
+    }
+
+    // 3. Buscar en Hojas de Vida (CVs)
+    for (const hv of savedHvs) {
+        if ((hv.descripcion || '').toLowerCase().includes(term) || (hv.remitente || '').toLowerCase().includes(term) || (hv.profesion || '').toLowerCase().includes(term) || (hv.nombreOriginal || '').toLowerCase().includes(term)) {
+            resultados.push({
+                tipo: '📄 Hoja de Vida',
+                fecha: `${hv.fecha} ${hv.hora}`,
+                chat: hv.grupo,
+                remitente: hv.remitente,
+                contenido: `${hv.profesion} - ${hv.nombreOriginal}: ${hv.descripcion}`,
+                url: hv.url
+            });
+        }
+    }
+
+    // 4. Buscar en Fotografías
+    for (const photo of savedPhotos) {
+        if ((photo.descripcion || '').toLowerCase().includes(term) || (photo.remitente || '').toLowerCase().includes(term) || (photo.grupo || '').toLowerCase().includes(term)) {
+            resultados.push({
+                tipo: '📷 Fotografía HD',
+                fecha: `${photo.fecha} ${photo.hora}`,
+                chat: photo.grupo,
+                remitente: photo.remitente,
+                contenido: photo.descripcion,
+                url: photo.url
+            });
+        }
+    }
+
+    return { query: term, resultados: resultados.slice(0, 50), total: resultados.length };
+}
+
 // 🔍 ESCÁNER RETROACTIVO DE HOJAS DE VIDA EN TODOS LOS CHATS
 async function escanearTodasLasHojasDeVidaHistoricas() {
     if (!sock) throw new Error('Cliente WhatsApp no inicializado');
@@ -363,7 +429,6 @@ async function connectToWhatsApp() {
         syncFullHistory: false
     });
 
-    // 📱 SINCRONIZACIÓN DE AGENDA DE CONTACTOS EN TIEMPO REAL
     sock.ev.on('contacts.upsert', (contacts) => {
         for (const c of contacts) {
             if (c.id) {
@@ -450,7 +515,6 @@ async function connectToWhatsApp() {
             const senderName = msg.pushName || senderJid.split('@')[0];
             const groupName = isGroup ? (msg.pushName || 'Grupo_WhatsApp') : senderName;
 
-            // Guardar o actualizar contacto remitente en la agenda
             if (senderJid) {
                 savedContacts[senderJid] = {
                     id: senderJid,
@@ -469,6 +533,19 @@ async function connectToWhatsApp() {
             const now = new Date();
             const dateStr = now.toISOString().split('T')[0];
             const timeStr = now.toTimeString().split(' ')[0];
+
+            // Guardar en historial de mensajes para búsqueda
+            if (textMessage.length > 0) {
+                messageHistoryStore.unshift({
+                    id: Date.now(),
+                    fecha: dateStr,
+                    hora: timeStr,
+                    grupo: groupName,
+                    remitente: senderName,
+                    texto: textMessage
+                });
+                if (messageHistoryStore.length > 500) messageHistoryStore.pop();
+            }
 
             // 🎙️ AUDIOS Y TRANSCRIPCIÓN IA
             if (msg.message.audioMessage) {
@@ -754,6 +831,16 @@ function generarResumenActividad(periodo = 'diario') {
 }
 
 // ENDPOINTS REST
+app.get('/api/search-content', async (req, res) => {
+    try {
+        const query = req.query.q || '';
+        const resultado = await buscarContenidosUniversal(query);
+        res.json({ success: true, ...resultado });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.post('/api/send-message', async (req, res) => {
     try {
         const { targetName, phone, message } = req.body;
@@ -767,7 +854,6 @@ app.post('/api/send-message', async (req, res) => {
         } else if (targetName) {
             const search = targetName.toLowerCase().trim();
 
-            // 1. Buscar en la Agenda de Contactos Sincronizada por Nombre o Remitente
             for (const jid in savedContacts) {
                 const c = savedContacts[jid];
                 const cName = (c.name || c.notify || '').toLowerCase();
@@ -778,7 +864,6 @@ app.post('/api/send-message', async (req, res) => {
                 }
             }
 
-            // 2. Buscar en Grupos Participantes
             if (!targetJid) {
                 const groups = await sock.groupFetchAllParticipating().catch(() => ({}));
                 for (const jid in groups) {

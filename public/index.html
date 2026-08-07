@@ -65,6 +65,18 @@
         <!-- MAIN FULL SCREEN CONTENT AREA -->
         <main class="app-main">
             
+            <!-- BUSCADOR UNIVERSAL DE CONTENIDOS EN TIEMPO REAL -->
+            <div class="glass-card" style="padding: 16px; margin-bottom: 4px;">
+                <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="globalSearchInput" class="glass-input" placeholder="🔍 Buscar palabras clave, planos, presupuestos, audios, candidatos o personas en chats..." style="flex: 1; min-width: 250px; font-size: 14px;">
+                    <button id="btnGlobalSearch" class="btn-primary" style="white-space: nowrap;">🔍 Buscar Contenido</button>
+                </div>
+                <div id="searchResultsContainer" style="display: none; margin-top: 16px; max-height: 350px; overflow-y: auto;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;" id="searchResultsHeader">Resultados:</div>
+                    <div id="searchResultsList" class="events-list"></div>
+                </div>
+            </div>
+
             <!-- TOP EXECUTIVE KPI ROW (FULL SCREEN WIDTH) -->
             <div class="kpi-row">
                 <div class="kpi-card">
