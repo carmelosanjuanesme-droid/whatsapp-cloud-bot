@@ -42,6 +42,8 @@ if (!fs.existsSync(audiosDir)) fs.mkdirSync(audiosDir, { recursive: true });
 const authDir = path.join(__dirname, 'baileys_auth_info');
 if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
 
+const backupFile = path.join(__dirname, 'session_backup.json');
+
 // Estado global de la aplicación
 let connectionStatus = 'INICIALIZANDO';
 let qrCodeDataUrl = null;
@@ -99,6 +101,66 @@ function detectarProfesion(texto) {
     return '📋 General / Otras Profesiones';
 }
 
+// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD (CERO PÉRDIDA AL REINICIAR)
+async function guardarSesionEnNube() {
+    if (!fs.existsSync(authDir)) return;
+    try {
+        const files = fs.readdirSync(authDir);
+        const sessionStore = {};
+        for (const file of files) {
+            const fullPath = path.join(authDir, file);
+            if (fs.statSync(fullPath).isFile()) {
+                sessionStore[file] = fs.readFileSync(fullPath, 'utf-8');
+            }
+        }
+        
+        fs.writeFileSync(backupFile, JSON.stringify(sessionStore));
+
+        if (GOOGLE_WEBHOOK_URL) {
+            await axios.post(GOOGLE_WEBHOOK_URL, {
+                action: 'save_session',
+                sessionData: JSON.stringify(sessionStore)
+            }).catch(() => {});
+        }
+        console.log('🔒 Sesión guardada y respaldada en la nube.');
+    } catch (e) {
+        console.error('Error guardando sesión en nube:', e.message);
+    }
+}
+
+async function restaurarSesionDesdeNube() {
+    try {
+        if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+
+        // 1. Restaurar desde respaldo local
+        if (fs.existsSync(backupFile)) {
+            const raw = fs.readFileSync(backupFile, 'utf-8');
+            const sessionStore = JSON.parse(raw);
+            for (const file in sessionStore) {
+                fs.writeFileSync(path.join(authDir, file), sessionStore[file]);
+            }
+            console.log('✅ Sesión restaurada con éxito desde respaldo local.');
+            return true;
+        }
+
+        // 2. Restaurar desde Webhook Cloud
+        if (GOOGLE_WEBHOOK_URL) {
+            const res = await axios.post(GOOGLE_WEBHOOK_URL, { action: 'get_session' }).catch(() => null);
+            if (res && res.data && res.data.sessionData) {
+                const sessionStore = JSON.parse(res.data.sessionData);
+                for (const file in sessionStore) {
+                    fs.writeFileSync(path.join(authDir, file), sessionStore[file]);
+                }
+                console.log('☁️ Sesión restaurada con éxito desde la nube de Google.');
+                return true;
+            }
+        }
+    } catch (e) {
+        console.error('Error restaurando sesión:', e.message);
+    }
+    return false;
+}
+
 // 📁 SUBIDA AUTOMÁTICA A GOOGLE DRIVE VIA WEBHOOK
 async function respaldarEnGoogleDrive(filePath, folderName, originalFilename) {
     if (!GOOGLE_WEBHOOK_URL) return;
@@ -147,7 +209,11 @@ async function transcribirAudioIA(audioFilePath) {
 let sock = null;
 
 async function connectToWhatsApp() {
-    console.log('⚡ Iniciando conexión ultraligera a WhatsApp con Baileys...');
+    console.log('⚡ Iniciando conexión a WhatsApp con Persistencia Cloud...');
+    
+    // Restaurar credenciales automáticamente
+    await restaurarSesionDesdeNube();
+
     connectionStatus = 'INICIALIZANDO';
     io.emit('status-update', { status: connectionStatus, qr: null });
 
@@ -165,7 +231,10 @@ async function connectToWhatsApp() {
         syncFullHistory: false
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async () => {
+        await saveCreds();
+        await guardarSesionEnNube();
+    });
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -186,11 +255,11 @@ async function connectToWhatsApp() {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
             
-            if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 428) {
-                console.log('🧹 Limpiando credenciales antiguas para permitir un escaneo fresco...');
+            if (statusCode === DisconnectReason.loggedOut) {
+                console.log('🧹 Sesión cerrada por el usuario. Limpiando credenciales...');
                 try {
                     fs.rmSync(authDir, { recursive: true, force: true });
-                    fs.mkdirSync(authDir, { recursive: true });
+                    if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
                 } catch (e) {}
             }
 
@@ -205,6 +274,7 @@ async function connectToWhatsApp() {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
             connectionStatus = 'CONECTADO_24_7';
             qrCodeDataUrl = null;
+            await guardarSesionEnNube();
             io.emit('status-update', { status: connectionStatus, qr: null });
         }
     });
@@ -243,7 +313,6 @@ async function connectToWhatsApp() {
                         const filePath = path.join(audiosDir, filename);
                         fs.writeFileSync(filePath, buffer);
 
-                        // Transcribir con IA
                         const transcripcion = await transcribirAudioIA(filePath);
 
                         const audioData = {
@@ -262,13 +331,11 @@ async function connectToWhatsApp() {
 
                         io.emit('new-audio', audioData);
 
-                        // ✉️ ENVIAR AUTO-RESPUESTA CON LA TRANSCRIPCIÓN AL MISMO CHAT
                         const replyMessage = `🎙️ *[Transcripción Automática de Nota de Voz]*\n👤 *De:* ${senderName}\n\n💬 "${transcripcion}"`;
                         await sock.sendMessage(fromJid, { text: replyMessage }, { quoted: msg }).catch(err => {
                             console.error('Error enviando transcripción al chat:', err.message);
                         });
 
-                        // Respaldo en Google Drive
                         respaldarEnGoogleDrive(filePath, 'Audios', filename);
                     }
                 } catch (err) {
@@ -317,7 +384,6 @@ async function connectToWhatsApp() {
                         io.emit('new-hv', hvData);
                         console.log(`📄 Hoja de Vida guardada en reservorio (${profesion}): ${filename}`);
 
-                        // Respaldo en Google Drive
                         respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
                     }
                 } catch (err) {
@@ -356,7 +422,6 @@ async function connectToWhatsApp() {
                         io.emit('new-photo', photoData);
                         console.log(`📷 Foto guardada y renombrada: ${filename}`);
 
-                        // Respaldo en Google Drive
                         respaldarEnGoogleDrive(filePath, 'Fotos', filename);
                     }
                 } catch (err) {
@@ -517,7 +582,7 @@ function generarResumenActividad(periodo = 'diario') {
                       `🎙️ *Audios Transcritos:* ${savedAudios.length}\n` +
                       `📅 *Citas y Compromisos:* ${capturedReminders.length}\n` +
                       `🌧️ *Eventos de Clima / Tiempos Muertos:* ${lastEvents.length}\n\n` +
-                      `✅ *Estado de la Plataforma:* Operativa 24/7 en la Nube.`
+                      `✅ *Estado de la Plataforma:* Operativa 24/7 en la Nube con Persistencia Activa.`
     };
 }
 
