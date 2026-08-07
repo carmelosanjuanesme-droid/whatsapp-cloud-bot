@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Cloud Hub 24/7 - Plataforma Multifuncional</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-globes">
+        <div class="globe globe-1"></div>
+        <div class="globe globe-2"></div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="glass-card header-card">
+            <div class="brand">
+                <div class="status-dot pulsing" id="statusDot"></div>
+                <div>
+                    <h1>WhatsApp Automation Hub 24/7</h1>
+                    <p class="subtitle">Plataforma Multifuncional: Fotos, Reenvíos, Citas y Limpieza de Chats</p>
+                </div>
+            </div>
+            <div class="status-badge" id="statusBadge">Conectando...</div>
+        </header>
+
+        <!-- Navegación por Pestañas (Tabs) -->
+        <nav class="nav-tabs glass-card">
+            <button class="tab-btn active" data-tab="tab-monitor">📌 Monitoreo & QR</button>
+            <button class="tab-btn" data-tab="tab-photos">📷 Fotos & Reportes</button>
+            <button class="tab-btn" data-tab="tab-forward">🔁 Reenvío entre Chats</button>
+            <button class="tab-btn" data-tab="tab-reminders">📅 Citas & Recordatorios</button>
+            <button class="tab-btn" data-tab="tab-cleanup">🧹 Limpieza de Chats (>6 meses)</button>
+        </nav>
+
+        <main class="tab-content-container">
+            <!-- PESTAÑA 1: MONITOREO Y QR -->
+            <div class="tab-pane active" id="tab-monitor">
+                <div class="grid-layout">
+                    <section class="glass-card qr-section" id="qrCard">
+                        <h2>Vincular con tu iPhone</h2>
+                        <p class="section-desc">Abre WhatsApp en tu iPhone ➔ <strong>Dispositivos vinculados</strong> ➔ Escanea el código QR:</p>
+                        
+                        <div class="qr-container" id="qrContainer">
+                            <div class="spinner" id="spinner"></div>
+                            <img id="qrImage" src="" alt="Código QR WhatsApp" style="display: none;">
+                            <div id="statusMessage" class="status-message">Generando código QR...</div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card events-section">
+                        <div class="section-header">
+                            <h2>🌧️ Bitácora de Eventos en Vivo</h2>
+                            <span class="event-counter" id="eventCounter">0 eventos</span>
+                        </div>
+                        <div class="events-list" id="eventsList">
+                            <div class="empty-state" id="emptyState">
+                                <p>No se han registrado eventos en tiempo real aún.</p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- PESTAÑA 2: FOTOS & REPORTES -->
+            <div class="tab-pane" id="tab-photos">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>📷 Galería de Fotos Recopiladas y Renombradas</h2>
+                        <span class="event-counter" id="photoCounter">0 fotos</span>
+                    </div>
+                    <p class="section-desc">Fotos descargadas en HD, renombradas automáticamente y listas para reportes:</p>
+                    <div class="photos-grid" id="photosGrid">
+                        <div class="empty-state">No se han recibido fotografías en los grupos monitoreados.</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- PESTAÑA 3: REENVÍO ENTRE CHATS -->
+            <div class="tab-pane" id="tab-forward">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>🔁 Reglas de Reenvío Inteligente a Otros Chats</h2>
+                    </div>
+                    <p class="section-desc">Los mensajes marcados con estas etiquetas se copiarán/reenviarán automáticamente al chat de destino:</p>
+                    
+                    <form id="forwardRulesForm" class="rules-form">
+                        <div class="form-group">
+                            <label>Chat/Grupo de Destino (Ej: Gerencia Ingelec):</label>
+                            <input type="text" id="targetChatName" class="glass-input" value="Gerencia Ingelec">
+                        </div>
+                        <div class="form-group">
+                            <label>Etiquetas / Palabras Clave a Reenviar (separadas por coma):</label>
+                            <input type="text" id="targetTags" class="glass-input" value="#urgente, #gerencia, #reporte">
+                        </div>
+                        <button type="submit" class="btn-primary">Guardar Configuración de Reenvío</button>
+                    </form>
+
+                    <div class="logs-container" style="margin-top: 20px;">
+                        <h3>Historial de Mensajes Reenviados</h3>
+                        <div class="events-list" id="forwardLogsList">
+                            <div class="empty-state">No hay reenvíos registrados aún.</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- PESTAÑA 4: CITAS Y RECORDATORIOS -->
+            <div class="tab-pane" id="tab-reminders">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>📅 Citas y Recordatorios Capturados de Chats</h2>
+                        <span class="event-counter" id="reminderCounter">0 citas</span>
+                    </div>
+                    <p class="section-desc">Compromisos y citas de inspección detectados automáticamente en tus conversaciones:</p>
+                    <div class="events-list" id="remindersList">
+                        <div class="empty-state">No hay citas capturadas por el momento.</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- PESTAÑA 5: LIMPIEZA DE CHATS INACTIVOS -->
+            <div class="tab-pane" id="tab-cleanup">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>🧹 Mantenimiento y Limpieza de Chats (> 6 Meses Inactivos)</h2>
+                    </div>
+                    <p class="section-desc">Escanea todos tus chats de WhatsApp. Si una conversación lleva más de 180 días sin actividad, se archivará automáticamente para mantener tu teléfono limpio.</p>
+                    
+                    <div class="action-box">
+                        <button id="btnRunCleanup" class="btn-primary btn-warning">
+                            🚀 Ejecutar Limpieza de Chats Inactivos (>180 días)
+                        </button>
+                    </div>
+
+                    <div class="logs-container" style="margin-top: 20px;">
+                        <h3>Reportes de Limpiezas Ejecutadas</h3>
+                        <div class="events-list" id="cleanupLogsList">
+                            <div class="empty-state">Presiona el botón superior para realizar el primer escaneo de limpieza.</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Plataforma Multifuncional WhatsApp 24/7 &bull; Ingelec Group SAS BIC</p>
+        </footer>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
