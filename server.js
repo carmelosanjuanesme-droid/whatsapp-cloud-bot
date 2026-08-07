@@ -726,6 +726,38 @@ function generarResumenActividad(periodo = 'diario') {
 }
 
 // ENDPOINTS REST
+app.post('/api/send-message', async (req, res) => {
+    try {
+        const { targetName, phone, message } = req.body;
+        if (!sock) return res.status(500).json({ success: false, error: 'WhatsApp no está conectado' });
+
+        let targetJid = null;
+
+        if (phone) {
+            const cleanPhone = phone.replace(/[^0-9]/g, '');
+            targetJid = `${cleanPhone}@s.whatsapp.net`;
+        } else if (targetName) {
+            const groups = await sock.groupFetchAllParticipating().catch(() => ({}));
+            for (const jid in groups) {
+                if (groups[jid].subject && groups[jid].subject.toLowerCase().includes(targetName.toLowerCase())) {
+                    targetJid = jid;
+                    break;
+                }
+            }
+        }
+
+        if (!targetJid) {
+            return res.status(404).json({ success: false, error: `No se encontró el chat de "${targetName || phone}". Proporciona el número con código de país.` });
+        }
+
+        await sock.sendMessage(targetJid, { text: message });
+        console.log(`✅ Mensaje enviado exitosamente a ${targetJid}`);
+        res.json({ success: true, targetJid });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/api/status', (req, res) => {
     res.json({
         status: connectionStatus,
