@@ -111,7 +111,14 @@ async function initMongoDB() {
     if (!MONGODB_URI) return null;
     try {
         if (!mongoClient) {
-            mongoClient = new MongoClient(MONGODB_URI);
+            let uri = MONGODB_URI;
+            if (!uri.includes('tlsAllowInvalidCertificates')) {
+                uri += (uri.includes('?') ? '&' : '?') + 'tls=true&tlsAllowInvalidCertificates=true';
+            }
+            mongoClient = new MongoClient(uri, {
+                serverSelectionTimeoutMS: 5000,
+                connectTimeoutMS: 10000
+            });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
             console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Activa)');
