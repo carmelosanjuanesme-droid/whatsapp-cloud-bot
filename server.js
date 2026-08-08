@@ -644,9 +644,10 @@ async function connectToWhatsApp() {
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+            const isRegistered = Boolean(state?.creds?.me?.id);
 
             if (isLoggedOut || !isRegistered) {
-                console.log('🧹 Sesión no registrada o desvinculada. Limpiando y preparando QR...');
+                console.log('🧹 Sesión no vinculada. Preparando QR...');
                 if (isLoggedOut) {
                     try {
                         fs.rmSync(authDir, { recursive: true, force: true });
@@ -656,9 +657,8 @@ async function connectToWhatsApp() {
                     } catch (e) {}
                 }
                 connectionStatus = 'ESPERANDO_QR';
-                qrCodeDataUrl = null;
-                io.emit('status-update', { status: connectionStatus, qr: null });
-                setTimeout(connectToWhatsApp, 1000);
+                io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
+                setTimeout(connectToWhatsApp, 2000);
             } else {
                 console.log(`⚠️ Reconectando sesión activa... Código: ${statusCode}`);
                 connectionStatus = 'RECONECTANDO';
