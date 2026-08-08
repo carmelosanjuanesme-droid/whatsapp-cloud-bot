@@ -275,9 +275,10 @@ async function respaldarEnGoogleDrive(filePath, folderName, originalFilename) {
     }
 }
 
-// 🎙️ TRANCRIPCIÓN DE AUDIOS DE VOZ CON IA
+// 🎙️ TRANCRIPCIÓN DE AUDIOS DE VOZ CON IA (GROQ WHISPER)
 async function transcribirAudioIA(audioFilePath) {
-    if (GROQ_API_KEY) {
+    const groqKey = process.env.GROQ_API_KEY || GROQ_API_KEY || '';
+    if (groqKey) {
         try {
             const FormData = require('form-data');
             const form = new FormData();
@@ -288,19 +289,20 @@ async function transcribirAudioIA(audioFilePath) {
             const response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', form, {
                 headers: {
                     ...form.getHeaders(),
-                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                    'Authorization': `Bearer ${groqKey}`
                 }
             });
 
             if (response.data && response.data.text) {
-                return response.data.text;
+                console.log(`🎙️ Transcripción Groq Whisper realizada con éxito: "${response.data.text.substring(0, 50)}..."`);
+                return response.data.text.trim();
             }
         } catch (e) {
             console.error('Error usando Groq Whisper API:', e.message);
         }
     }
 
-    return '🎙️ [Nota de voz recibida y registrada. Transcripción lista para procesamiento por IA]';
+    return null;
 }
 
 // 🔍 MOTOR DE BÚSQUEDA UNIVERSAL EN CHATS, GRUPOS Y ARCHIVOS
@@ -495,10 +497,11 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
                 io.emit('new-audio', audioData);
                 persistirItemMongoDB('audios', audioData);
 
-                const replyMessage = transcripcion;
-                await sock.sendMessage(fromJid, { text: replyMessage }, { quoted: msg }).catch(err => {
-                    console.error('Error enviando transcripción al chat:', err.message);
-                });
+                if (transcripcion && typeof transcripcion === 'string' && transcripcion.trim().length > 0) {
+                    await sock.sendMessage(fromJid, { text: transcripcion.trim() }, { quoted: msg }).catch(err => {
+                        console.error('Error enviando transcripción al chat:', err.message);
+                    });
+                }
 
                 respaldarEnGoogleDrive(filePath, 'Audios', filename);
             }
