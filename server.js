@@ -577,11 +577,8 @@ async function connectToWhatsApp() {
     const socketOptions = {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        auth: {
-            creds: state.creds,
-            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-        },
-        browser: ['Mac OS', 'Chrome', '121.0.0.0'],
+        auth: state,
+        browser: Browsers.macOS('Desktop'),
         syncFullHistory: false
     };
 
