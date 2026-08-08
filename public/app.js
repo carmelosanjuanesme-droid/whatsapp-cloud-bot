@@ -276,6 +276,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Funciones de Renderizado
     function updateStatusUI(status, qrDataUrl) {
         switch (status) {
+            case 'RESTAURANDO_SESION':
+            case 'RECONECTANDO':
+            case 'INICIALIZANDO':
+                if (statusDot) statusDot.className = 'status-dot pulsing';
+                if (statusBadgeText) statusBadgeText.textContent = 'Autenticando Nube';
+                if (kpiStatus) kpiStatus.textContent = 'Autenticando Nube';
+                if (qrImage) qrImage.style.display = 'none';
+                if (spinner) spinner.style.display = 'block';
+                if (statusMessage) {
+                    statusMessage.textContent = 'Autenticando sesión guardada en MongoDB Atlas...';
+                    statusMessage.style.display = 'block';
+                    statusMessage.style.color = '#60a5fa';
+                }
+                break;
+
             case 'ESPERANDO_QR':
                 if (statusDot) statusDot.className = 'status-dot pulsing';
                 if (statusBadgeText) statusBadgeText.textContent = 'Esperando QR';

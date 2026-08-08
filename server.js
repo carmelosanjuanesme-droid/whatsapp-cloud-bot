@@ -497,9 +497,10 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
+        const hasStoredCreds = fs.existsSync(path.join(authDir, 'creds.json'));
 
-        if (qr && connectionStatus !== 'CONECTADO_24_7') {
-            console.log('📌 Código QR de Baileys generado. Listo para escanear.');
+        if (qr && !hasStoredCreds && connectionStatus !== 'CONECTADO_24_7') {
+            console.log('📌 Código QR generado (sin credenciales previas). Listo para escanear.');
             connectionStatus = 'ESPERANDO_QR';
             try {
                 qrCodeDataUrl = await qrcode.toDataURL(qr);
@@ -507,6 +508,10 @@ async function connectToWhatsApp() {
             } catch (err) {
                 console.error('Error convirtiendo QR a DataURL:', err);
             }
+        } else if (hasStoredCreds && connectionStatus !== 'CONECTADO_24_7') {
+            console.log('🔒 Credenciales detectadas en disco/MongoDB. Autenticando con WhatsApp...');
+            connectionStatus = 'RESTAURANDO_SESION';
+            io.emit('status-update', { status: connectionStatus, qr: null });
         }
 
         if (connection === 'close') {
