@@ -605,9 +605,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', async () => {
         await saveCreds();
-        if (state?.creds?.me?.id) {
-            await guardarSesionEnNube();
-        }
+        await guardarSesionEnNube();
     });
 
     sock.ev.on('messaging-history.set', async ({ messages, contacts }) => {
@@ -649,8 +647,10 @@ async function connectToWhatsApp() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
 
-            if (connectionStatus !== 'CONECTADO_24_7' || isLoggedOut) {
-                console.log(`🧹 La sesión almacenada no se pudo autenticar (Código: ${statusCode}). Limpiando credenciales y preparando QR...`);
+            console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. LoggedOut: ${isLoggedOut}`);
+
+            if (isLoggedOut) {
+                console.log('🧹 Sesión desvinculada por WhatsApp. Limpiando credenciales...');
                 try {
                     fs.rmSync(authDir, { recursive: true, force: true });
                     if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
@@ -662,10 +662,12 @@ async function connectToWhatsApp() {
                 io.emit('status-update', { status: connectionStatus, qr: null });
                 setTimeout(connectToWhatsApp, 2000);
             } else {
-                console.log(`⚠️ Reconectando sesión activa... Código: ${statusCode}`);
-                connectionStatus = 'RECONECTANDO';
-                io.emit('status-update', { status: connectionStatus, qr: null });
-                setTimeout(connectToWhatsApp, 3000);
+                console.log('🔄 Reabriendo socket de WhatsApp tras escaneo/reconexión...');
+                if (connectionStatus !== 'CONECTADO_24_7') {
+                    connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'ESPERANDO_QR';
+                }
+                io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
+                setTimeout(connectToWhatsApp, 1500);
             }
         } else if (connection === 'open') {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
