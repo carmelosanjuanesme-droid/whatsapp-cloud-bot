@@ -231,6 +231,10 @@ async function restaurarSesionDesdeNube() {
                 }
                 console.log(`🍃 Sesión restaurada desde MongoDB Atlas (${docs.length} archivos devueltos a disco sin corrupción).`);
                 return true;
+            } else {
+                console.log('ℹ️ MongoDB Atlas session_auth está vacío. Se requiere un nuevo QR.');
+                if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
+                return false;
             }
         }
 
