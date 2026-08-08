@@ -646,20 +646,18 @@ async function connectToWhatsApp() {
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
-            const isRegistered = Boolean(state?.creds?.me?.id);
 
-            if (isLoggedOut || !isRegistered) {
-                console.log('🧹 Sesión no vinculada. Preparando QR...');
-                if (isLoggedOut) {
-                    try {
-                        fs.rmSync(authDir, { recursive: true, force: true });
-                        if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
-                        const db = await initMongoDB();
-                        if (db) await db.collection('session_auth').deleteMany({});
-                    } catch (e) {}
-                }
+            if (connectionStatus !== 'CONECTADO_24_7' || isLoggedOut) {
+                console.log(`🧹 La sesión almacenada no se pudo autenticar (Código: ${statusCode}). Limpiando credenciales y preparando QR...`);
+                try {
+                    fs.rmSync(authDir, { recursive: true, force: true });
+                    if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
+                    const db = await initMongoDB();
+                    if (db) await db.collection('session_auth').deleteMany({});
+                } catch (e) {}
                 connectionStatus = 'ESPERANDO_QR';
-                io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
+                qrCodeDataUrl = null;
+                io.emit('status-update', { status: connectionStatus, qr: null });
                 setTimeout(connectToWhatsApp, 2000);
             } else {
                 console.log(`⚠️ Reconectando sesión activa... Código: ${statusCode}`);
