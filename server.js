@@ -603,7 +603,9 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', async () => {
         await saveCreds();
-        await guardarSesionEnNube();
+        if (state?.creds?.me?.id) {
+            await guardarSesionEnNube();
+        }
     });
 
     sock.ev.on('messaging-history.set', async ({ messages, contacts }) => {
