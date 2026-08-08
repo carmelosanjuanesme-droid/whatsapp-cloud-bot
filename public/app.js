@@ -247,6 +247,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Resetear Sesión y Generar Nuevo QR Limpio
+    const btnResetSession = document.getElementById('btnResetSession');
+    if (btnResetSession) {
+        btnResetSession.addEventListener('click', async () => {
+            if (!confirm('¿Estás seguro de que deseas vaciar las credenciales anteriores y generar un nuevo código QR limpio?')) return;
+
+            btnResetSession.disabled = true;
+            btnResetSession.textContent = '⏳ Reseteando sesión y borrando credenciales...';
+
+            try {
+                const res = await fetch('/api/reset-session', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    alert('✅ Sesión reseteada. Generando nuevo código QR fresco...');
+                } else {
+                    alert(`⚠️ Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al resetear sesión: ${err.message}`);
+            } finally {
+                btnResetSession.disabled = false;
+                btnResetSession.textContent = '🔄 Resetear Sesión y Generar Nuevo QR Limpio';
+            }
+        });
+    }
+
     // Funciones de Renderizado
     function updateStatusUI(status, qrDataUrl) {
         switch (status) {

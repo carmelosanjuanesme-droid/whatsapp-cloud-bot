@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
+    makeCacheableSignalKeyStore,
     DisconnectReason, 
     downloadMediaMessage,
     fetchLatestBaileysVersion,
@@ -127,6 +128,8 @@ async function initMongoDB() {
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
             console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Activa)');
+            
+            await cargarDatosDesdeMongoDB();
         }
         return mongoDb;
     } catch (e) {
@@ -458,8 +461,11 @@ async function connectToWhatsApp() {
         version,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        auth: state,
-        browser: Browsers.ubuntu('Chrome'),
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+        },
+        browser: Browsers.macOS('Desktop'),
         syncFullHistory: false
     });
 
@@ -873,6 +879,35 @@ function generarResumenActividad(periodo = 'diario') {
 }
 
 // ENDPOINTS REST
+app.post('/api/reset-session', async (req, res) => {
+    try {
+        console.log('🧹 Reiniciando sesión y vaciando credenciales anteriores...');
+        if (sock) {
+            try { sock.ev.removeAllListeners(); sock.ws?.close(); } catch (e) {}
+            sock = null;
+        }
+
+        if (fs.existsSync(authDir)) fs.rmSync(authDir, { recursive: true, force: true });
+        fs.mkdirSync(authDir, { recursive: true });
+        if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
+
+        const db = await initMongoDB();
+        if (db) {
+            await db.collection('session_auth').deleteMany({});
+            console.log('🧹 Colección session_auth de MongoDB Atlas vaciada.');
+        }
+
+        connectionStatus = 'DESCONECTADO';
+        qrCodeDataUrl = null;
+        io.emit('status-update', { status: connectionStatus, qr: null });
+
+        setTimeout(connectToWhatsApp, 2000);
+        res.json({ success: true, message: 'Sesión reiniciada con éxito. Se generará un nuevo QR limpio.' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/api/search-content', async (req, res) => {
     try {
         const query = req.query.q || '';
