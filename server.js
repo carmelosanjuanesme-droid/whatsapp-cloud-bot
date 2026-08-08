@@ -609,7 +609,7 @@ async function connectToWhatsApp() {
                         io.emit('new-audio', audioData);
                         persistirItemMongoDB('audios', audioData);
 
-                        const replyMessage = `🎙️ *[Transcripción Automática de Nota de Voz]*\n👤 *De:* ${senderName}\n\n💬 "${transcripcion}"`;
+                        const replyMessage = transcripcion;
                         await sock.sendMessage(fromJid, { text: replyMessage }, { quoted: msg }).catch(err => {
                             console.error('Error enviando transcripción al chat:', err.message);
                         });
