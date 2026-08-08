@@ -565,24 +565,26 @@ async function connectToWhatsApp() {
     const tieneSesion = await restaurarSesionDesdeNube();
 
     connectionStatus = tieneSesion ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
-    io.emit('status-update', { status: connectionStatus, qr: null });
-
-    const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] }));
-    console.log(`📌 Versión de WhatsApp Web obtenida: v${version.join('.')}`);
+    const baileyVer = await fetchLatestBaileysVersion().catch(() => null);
+    const version = baileyVer ? baileyVer.version : undefined;
+    if (version) console.log(`📌 Versión de WhatsApp Web obtenida: v${version.join('.')}`);
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
-    sock = makeWASocket({
-        version,
+    const socketOptions = {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
         auth: {
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
         },
-        browser: Browsers.macOS('Desktop'),
+        browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false
-    });
+    };
+
+    if (version) socketOptions.version = version;
+
+    sock = makeWASocket(socketOptions);
 
     sock.ev.on('contacts.upsert', (contacts) => {
         for (const c of contacts) {
