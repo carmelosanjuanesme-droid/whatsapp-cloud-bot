@@ -354,13 +354,14 @@ async function buscarContenidosUniversal(query) {
     return { query: term, resultados: resultados.slice(0, 50), total: resultados.length };
 }
 
-// 🔍 ESCÁNER RETROACTIVO DE HOJAS DE VIDA EN TODOS LOS CHATS
+// 🔍 ESCÁNER RETROACTIVO DE HOJAS DE VIDA EN TODOS LOS CHATS (ÚLTIMO AÑO / 365 DÍAS)
 async function escanearTodasLasHojasDeVidaHistoricas() {
     if (!sock) throw new Error('Cliente WhatsApp no inicializado');
 
-    console.log('🔍 Iniciando escaneo retroactivo de Hojas de Vida en todos los chats...');
+    console.log('🔍 Iniciando escaneo retroactivo de Hojas de Vida del último año (365 días)...');
     let hvsEncontradas = 0;
     let chatsEscaneados = 0;
+    const haceUnAnoMs = Date.now() - (365 * 24 * 60 * 60 * 1000);
 
     try {
         const groups = await sock.groupFetchAllParticipating();
@@ -370,10 +371,13 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
             const groupName = groups[jid].subject || 'Grupo_WhatsApp';
 
             try {
-                const messages = await sock.fetchMessagesFromChat(jid, { limit: 100 }).catch(() => []);
+                const messages = await sock.fetchMessagesFromChat(jid, { limit: 500 }).catch(() => []);
 
                 for (const msg of messages) {
                     if (!msg.message) continue;
+
+                    const timestampMs = (msg.messageTimestamp || Date.now() / 1000) * 1000;
+                    if (timestampMs < haceUnAnoMs) continue;
 
                     const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
                     const docName = docMsg?.fileName || '';
@@ -401,14 +405,14 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
 
                                     const hvData = {
                                         id: Date.now() + Math.floor(Math.random() * 1000),
-                                        fecha: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000).toISOString().split('T')[0],
-                                        hora: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000).toTimeString().split(' ')[0],
+                                        fecha: new Date(timestampMs).toISOString().split('T')[0],
+                                        hora: new Date(timestampMs).toTimeString().split(' ')[0],
                                         grupo: groupName,
                                         remitente: senderName,
                                         profesion: profesion,
                                         nombreArchivo: filename,
                                         nombreOriginal: docName || 'Hoja_de_Vida.pdf',
-                                        descripcion: caption || 'Hoja de vida histórica rescatada de chat',
+                                        descripcion: caption || 'Hoja de vida histórica rescatada del último año',
                                         url: `/downloads/hojas_de_vida/${filename}`,
                                         tamano: (buffer.length / 1024).toFixed(1) + ' KB'
                                     };
@@ -431,7 +435,7 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
         console.error('Error general en escaneo retroactivo:', err.message);
     }
 
-    console.log(`✅ Escaneo completado: ${hvsEncontradas} Hojas de Vida rescatadas de ${chatsEscaneados} chats.`);
+    console.log(`✅ Escaneo del último año completado: ${hvsEncontradas} Hojas de Vida rescatadas de ${chatsEscaneados} chats.`);
     return { chatsEscaneados, hvsEncontradas, totalHvs: savedHvs.length };
 }
 
