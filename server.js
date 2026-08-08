@@ -550,6 +550,14 @@ let sock = null;
 async function connectToWhatsApp() {
     console.log('⚡ Iniciando conexión a WhatsApp con Persistencia MongoDB Atlas...');
     
+    if (sock) {
+        try {
+            sock.ev.removeAllListeners();
+            sock.ws?.close();
+        } catch (e) {}
+        sock = null;
+    }
+
     const tieneSesion = await restaurarSesionDesdeNube();
 
     connectionStatus = tieneSesion ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
@@ -639,16 +647,19 @@ async function connectToWhatsApp() {
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+            const shouldReconnect = !isLoggedOut;
             console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
             
-            if (statusCode === DisconnectReason.loggedOut) {
-                console.log('🧹 Sesión cerrada por el usuario. Limpiando credenciales...');
+            if (isLoggedOut) {
+                console.log('🧹 Sesión cerrada/revocada. Limpiando credenciales en disco y MongoDB...');
                 try {
                     fs.rmSync(authDir, { recursive: true, force: true });
                     if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
+                    const db = await initMongoDB();
+                    if (db) await db.collection('session_auth').deleteMany({});
                 } catch (e) {}
-                connectionStatus = 'DESCONECTADO';
+                connectionStatus = 'ESPERANDO_QR';
             } else {
                 connectionStatus = 'RECONECTANDO';
             }
@@ -658,6 +669,8 @@ async function connectToWhatsApp() {
 
             if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 3000);
+            } else {
+                setTimeout(connectToWhatsApp, 2000);
             }
         } else if (connection === 'open') {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
