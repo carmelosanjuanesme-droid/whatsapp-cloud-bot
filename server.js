@@ -562,14 +562,17 @@ async function connectToWhatsApp() {
         sock = null;
     }
 
-    const tieneSesion = await restaurarSesionDesdeNube();
+    await restaurarSesionDesdeNube();
 
-    connectionStatus = tieneSesion ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    const isRegistered = state?.creds?.registered === true || Boolean(state?.creds?.me);
+
+    connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
+    io.emit('status-update', { status: connectionStatus, qr: null });
+
     const baileyVer = await fetchLatestBaileysVersion().catch(() => null);
     const version = baileyVer ? baileyVer.version : undefined;
     if (version) console.log(`📌 Versión de WhatsApp Web obtenida: v${version.join('.')}`);
-
-    const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
     const socketOptions = {
         logger: pino({ level: 'silent' }),
@@ -634,10 +637,10 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        const hasStoredCreds = fs.existsSync(path.join(authDir, 'creds.json'));
+        const isSessionRegistered = state?.creds?.registered === true || Boolean(state?.creds?.me);
 
-        if (qr && !hasStoredCreds && connectionStatus !== 'CONECTADO_24_7') {
-            console.log('📌 Código QR generado (sin credenciales previas). Listo para escanear.');
+        if (qr && !isSessionRegistered && connectionStatus !== 'CONECTADO_24_7') {
+            console.log('📌 Código QR de Baileys generado. Listo para escanear.');
             connectionStatus = 'ESPERANDO_QR';
             try {
                 qrCodeDataUrl = await qrcode.toDataURL(qr);
@@ -645,8 +648,8 @@ async function connectToWhatsApp() {
             } catch (err) {
                 console.error('Error convirtiendo QR a DataURL:', err);
             }
-        } else if (hasStoredCreds && connectionStatus !== 'CONECTADO_24_7') {
-            console.log('🔒 Credenciales detectadas en disco/MongoDB. Autenticando con WhatsApp...');
+        } else if (isSessionRegistered && connectionStatus !== 'CONECTADO_24_7') {
+            console.log('🔒 Sesión registrada detectada. Autenticando con WhatsApp...');
             connectionStatus = 'RESTAURANDO_SESION';
             io.emit('status-update', { status: connectionStatus, qr: null });
         }
@@ -657,8 +660,8 @@ async function connectToWhatsApp() {
             const shouldReconnect = !isLoggedOut;
             console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
             
-            if (isLoggedOut || !hasStoredCreds) {
-                console.log('🧹 Preparando entorno para código QR limpio...');
+            if (isLoggedOut || !isSessionRegistered) {
+                console.log('🧹 Entorno no registrado o sesión revocada. Generando QR...');
                 if (isLoggedOut) {
                     try {
                         fs.rmSync(authDir, { recursive: true, force: true });
