@@ -357,21 +357,43 @@ async function buscarContenidosUniversal(query) {
     return { query: term, resultados: resultados.slice(0, 50), total: resultados.length };
 }
 
-// 🔍 ESCÁNER RETROACTIVO DE HOJAS DE VIDA EN TODOS LOS CHATS (ÚLTIMO AÑO / 365 DÍAS)
+// 🔍 ESCÁNER RETROACTIVO DE HOJAS DE VIDA EN TODOS LOS CHATS (GRUPALES E INDIVIDUALES DEL ÚLTIMO AÑO)
 async function escanearTodasLasHojasDeVidaHistoricas() {
     if (!sock) throw new Error('Cliente WhatsApp no inicializado');
 
-    console.log('🔍 Iniciando escaneo retroactivo de Hojas de Vida del último año (365 días)...');
+    console.log('🔍 Iniciando escaneo retroactivo de Hojas de Vida en chats grupales e individuales...');
     let hvsEncontradas = 0;
     let chatsEscaneados = 0;
     const haceUnAnoMs = Date.now() - (365 * 24 * 60 * 60 * 1000);
 
+    const targetChats = new Map();
+
+    // 1. Grupos de WhatsApp
     try {
         const groups = await sock.groupFetchAllParticipating();
-
         for (const jid in groups) {
+            targetChats.set(jid, groups[jid].subject || 'Grupo_WhatsApp');
+        }
+    } catch (e) {}
+
+    // 2. Contactos e Individuales Sincronizados
+    for (const jid in savedContacts) {
+        if (!targetChats.has(jid)) {
+            const c = savedContacts[jid];
+            targetChats.set(jid, c.name || c.notify || jid.split('@')[0]);
+        }
+    }
+
+    // 3. Historial de mensajes recientes
+    for (const m of messageHistoryStore) {
+        if (m.jid && !targetChats.has(m.jid)) {
+            targetChats.set(m.jid, m.grupo || m.remitente || 'Chat_WhatsApp');
+        }
+    }
+
+    try {
+        for (const [jid, chatName] of targetChats.entries()) {
             chatsEscaneados++;
-            const groupName = groups[jid].subject || 'Grupo_WhatsApp';
 
             try {
                 const messages = await sock.fetchMessagesFromChat(jid, { limit: 500 }).catch(() => []);
@@ -382,25 +404,32 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
                     const timestampMs = (msg.messageTimestamp || Date.now() / 1000) * 1000;
                     if (timestampMs < haceUnAnoMs) continue;
 
-                    const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
-                    const docName = docMsg?.fileName || '';
-                    const caption = docMsg?.caption || msg.message.conversation || '';
-                    const combinedDocText = (docName + ' ' + caption).toLowerCase();
-                    const isHV = HV_KEYWORDS.some(kw => combinedDocText.includes(kw));
+                    const docMsg = msg.message.documentMessage || 
+                                   msg.message.documentWithCaptionMessage?.message?.documentMessage ||
+                                   msg.message.ephemeralMessage?.message?.documentMessage ||
+                                   msg.message.viewOnceMessage?.message?.documentMessage;
 
-                    if (isHV || (docMsg && (docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv')))) {
+                    const docName = docMsg?.fileName || '';
+                    const caption = docMsg?.caption || msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+                    const combinedDocText = (docName + ' ' + caption).toLowerCase();
+                    const ext = docName ? path.extname(docName).toLowerCase() : '';
+
+                    const isDocExtension = ext === '.pdf' || ext === '.doc' || ext === '.docx';
+                    const isHVKeyword = HV_KEYWORDS.some(kw => combinedDocText.includes(kw.trim()));
+
+                    if (docMsg && (isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
                         try {
                             const buffer = await downloadMediaMessage(msg, 'buffer', {});
                             if (buffer) {
                                 const senderJid = msg.key.participant || msg.key.remoteJid;
-                                const senderName = msg.pushName || senderJid.split('@')[0];
-                                const ext = docName ? path.extname(docName) : '.pdf';
+                                const senderName = msg.pushName || (savedContacts[senderJid]?.name) || senderJid.split('@')[0];
                                 const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
-                                const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+                                const safeGroup = chatName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
                                 const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
                                 const profesion = detectarProfesion(combinedDocText);
 
-                                const filename = `HV_Hist_${safeSender}_${safeGroup}_${cleanDoc}${ext.startsWith('.') ? ext : '.' + ext}`;
+                                const fileExt = ext || '.pdf';
+                                const filename = `HV_Hist_${safeSender}_${safeGroup}_${cleanDoc}${fileExt.startsWith('.') ? fileExt : '.' + fileExt}`;
                                 const filePath = path.join(hvsDir, filename);
 
                                 if (!fs.existsSync(filePath)) {
@@ -410,12 +439,12 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
                                         id: Date.now() + Math.floor(Math.random() * 1000),
                                         fecha: new Date(timestampMs).toISOString().split('T')[0],
                                         hora: new Date(timestampMs).toTimeString().split(' ')[0],
-                                        grupo: groupName,
+                                        grupo: chatName,
                                         remitente: senderName,
                                         profesion: profesion,
                                         nombreArchivo: filename,
                                         nombreOriginal: docName || 'Hoja_de_Vida.pdf',
-                                        descripcion: caption || 'Hoja de vida histórica rescatada del último año',
+                                        descripcion: caption || 'Hoja de vida rescatada de chats grupales e individuales',
                                         url: `/downloads/hojas_de_vida/${filename}`,
                                         tamano: (buffer.length / 1024).toFixed(1) + ' KB'
                                     };
@@ -431,14 +460,14 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
                     }
                 }
             } catch (err) {
-                console.error(`Error escaneando chat ${groupName}:`, err.message);
+                console.error(`Error escaneando chat ${chatName}:`, err.message);
             }
         }
     } catch (err) {
         console.error('Error general en escaneo retroactivo:', err.message);
     }
 
-    console.log(`✅ Escaneo del último año completado: ${hvsEncontradas} Hojas de Vida rescatadas de ${chatsEscaneados} chats.`);
+    console.log(`✅ Escaneo de chats grupales e individuales completado: ${hvsEncontradas} Hojas de Vida rescatadas de ${chatsEscaneados} chats.`);
     return { chatsEscaneados, hvsEncontradas, totalHvs: savedHvs.length };
 }
 
