@@ -655,26 +655,25 @@ async function connectToWhatsApp() {
             const shouldReconnect = !isLoggedOut;
             console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
             
-            if (isLoggedOut) {
-                console.log('🧹 Sesión cerrada/revocada. Limpiando credenciales en disco y MongoDB...');
-                try {
-                    fs.rmSync(authDir, { recursive: true, force: true });
-                    if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
-                    const db = await initMongoDB();
-                    if (db) await db.collection('session_auth').deleteMany({});
-                } catch (e) {}
+            if (isLoggedOut || !hasStoredCreds) {
+                console.log('🧹 Preparando entorno para código QR limpio...');
+                if (isLoggedOut) {
+                    try {
+                        fs.rmSync(authDir, { recursive: true, force: true });
+                        if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
+                        const db = await initMongoDB();
+                        if (db) await db.collection('session_auth').deleteMany({});
+                    } catch (e) {}
+                }
                 connectionStatus = 'ESPERANDO_QR';
             } else {
                 connectionStatus = 'RECONECTANDO';
             }
 
-            qrCodeDataUrl = null;
-            io.emit('status-update', { status: connectionStatus, qr: null });
+            io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
 
             if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 3000);
-            } else {
-                setTimeout(connectToWhatsApp, 2000);
             }
         } else if (connection === 'open') {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
