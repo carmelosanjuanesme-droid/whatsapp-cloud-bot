@@ -80,7 +80,7 @@ const CALENDAR_KEYWORDS = [
 
 const HV_KEYWORDS = [
     'hoja de vida', 'hojadevida', 'curriculum', 'curriculum vitae', ' cv ', '_cv', 'cv_',
-    'perfil profesional', 'hoja de trabajo', 'postulacion', 'candidato', 'aspirante', 'hv'
+    'perfil profesional', 'hoja de trabajo', 'postulacion', 'candidato', 'aspirante', 'hv', 'cesar'
 ];
 
 function detectarProfesion(texto) {
@@ -91,8 +91,8 @@ function detectarProfesion(texto) {
     if (t.includes('civil') || t.includes('arquitect') || t.includes('obra') || t.includes('plano') || t.includes('estructura')) {
         return '🏗️ Ingeniería Civil / Obra / Arquitectura';
     }
-    if (t.includes('admin') || t.includes('contad') || t.includes('financ') || t.includes('auxiliar') || t.includes('recursos humanos') || t.includes('rh')) {
-        return '💼 Administración / Finanzas / Contabilidad';
+    if (t.includes('admin') || t.includes('contad') || t.includes('financ') || t.includes('auxiliar') || t.includes('recursos humanos') || t.includes('rh') || t.includes('sst')) {
+        return '💼 Administración / SST / Contabilidad';
     }
     if (t.includes('sistemas') || t.includes('programad') || t.includes('software') || t.includes('tic') || t.includes('redes') || t.includes('soporte')) {
         return '💻 Sistemas / Redes / TIC';
@@ -248,21 +248,6 @@ async function restaurarSesionDesdeNube() {
             console.log(`✅ Sesión restaurada desde respaldo local (${restCount} archivos).`);
             return true;
         }
-
-        if (GOOGLE_WEBHOOK_URL) {
-            const res = await axios.post(GOOGLE_WEBHOOK_URL, { action: 'get_session' }).catch(() => null);
-            if (res && res.data && res.data.sessionData) {
-                const sessionStore = JSON.parse(res.data.sessionData);
-                for (const file in sessionStore) {
-                    const fileBuffer = isBase64Str(sessionStore[file])
-                        ? Buffer.from(sessionStore[file], 'base64')
-                        : Buffer.from(sessionStore[file], 'utf-8');
-                    fs.writeFileSync(path.join(authDir, file), fileBuffer);
-                }
-                console.log('☁️ Sesión restaurada desde Google Cloud.');
-                return true;
-            }
-        }
     } catch (e) {
         console.error('Error restaurando sesión:', e.message);
     }
@@ -375,118 +360,189 @@ async function buscarContenidosUniversal(query) {
     return { query: term, resultados: resultados.slice(0, 50), total: resultados.length };
 }
 
-// 🔍 ESCÁNER RETROACTIVO DE HOJAS DE VIDA EN TODOS LOS CHATS (GRUPALES E INDIVIDUALES DEL ÚLTIMO AÑO)
-async function escanearTodasLasHojasDeVidaHistoricas() {
-    if (!sock) throw new Error('Cliente WhatsApp no inicializado');
+// 📩 PROCESADOR UNIVERSAL DE MENSAJES (VIVOS E HISTÓRICOS)
+async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
+    if (!msg.message || msg.key.fromMe) return;
 
-    console.log('🔍 Iniciando escaneo retroactivo de Hojas de Vida en chats grupales e individuales...');
-    let hvsEncontradas = 0;
-    let chatsEscaneados = 0;
-    const haceUnAnoMs = Date.now() - (365 * 24 * 60 * 60 * 1000);
+    const fromJid = msg.key.remoteJid;
+    const isGroup = fromJid.endsWith('@g.us');
+    const senderJid = msg.key.participant || fromJid;
+    const senderName = msg.pushName || (savedContacts[senderJid]?.name) || senderJid.split('@')[0];
+    const groupName = isGroup ? (msg.pushName || 'Grupo_WhatsApp') : senderName;
 
-    const targetChats = new Map();
-
-    // 1. Grupos de WhatsApp
-    try {
-        const groups = await sock.groupFetchAllParticipating();
-        for (const jid in groups) {
-            targetChats.set(jid, groups[jid].subject || 'Grupo_WhatsApp');
-        }
-    } catch (e) {}
-
-    // 2. Contactos e Individuales Sincronizados
-    for (const jid in savedContacts) {
-        if (!targetChats.has(jid)) {
-            const c = savedContacts[jid];
-            targetChats.set(jid, c.name || c.notify || jid.split('@')[0]);
-        }
+    if (senderJid) {
+        savedContacts[senderJid] = {
+            id: senderJid,
+            name: senderName,
+            notify: msg.pushName
+        };
     }
 
-    // 3. Historial de mensajes recientes
-    for (const m of messageHistoryStore) {
-        if (m.jid && !targetChats.has(m.jid)) {
-            targetChats.set(m.jid, m.grupo || m.remitente || 'Chat_WhatsApp');
-        }
+    const docMsg = msg.message.documentMessage || 
+                   msg.message.documentWithCaptionMessage?.message?.documentMessage ||
+                   msg.message.ephemeralMessage?.message?.documentMessage ||
+                   msg.message.viewOnceMessage?.message?.documentMessage;
+
+    const textMessage = msg.message.conversation || 
+                      msg.message.extendedTextMessage?.text || 
+                      msg.message.imageMessage?.caption || 
+                      msg.message.videoMessage?.caption || 
+                      docMsg?.caption || '';
+    const textLower = textMessage.toLowerCase();
+
+    const timestampMs = (msg.messageTimestamp || Date.now() / 1000) * 1000;
+    const now = new Date(timestampMs);
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0];
+
+    if (textMessage.length > 0) {
+        const msgData = {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            jid: fromJid,
+            fecha: dateStr,
+            hora: timeStr,
+            grupo: groupName,
+            remitente: senderName,
+            texto: textMessage
+        };
+        messageHistoryStore.unshift(msgData);
+        if (messageHistoryStore.length > 500) messageHistoryStore.pop();
+        persistirItemMongoDB('messages', msgData);
     }
 
-    try {
-        for (const [jid, chatName] of targetChats.entries()) {
-            chatsEscaneados++;
+    // 📄 HOJAS DE VIDA (CVs)
+    const docName = docMsg?.fileName || '';
+    const combinedDocText = (docName + ' ' + textMessage).toLowerCase();
+    const ext = docName ? path.extname(docName).toLowerCase() : '';
+    const isDocExtension = ext === '.pdf' || ext === '.doc' || ext === '.docx';
+    const isHVKeyword = HV_KEYWORDS.some(kw => combinedDocText.includes(kw.trim()));
 
-            try {
-                const messages = await sock.fetchMessagesFromChat(jid, { limit: 500 }).catch(() => []);
+    if (docMsg && (isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
+        try {
+            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            if (buffer) {
+                const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+                const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
+                const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
+                const profesion = detectarProfesion(combinedDocText);
 
-                for (const msg of messages) {
-                    if (!msg.message) continue;
+                const fileExt = ext || '.pdf';
+                const filename = `HV_${dateStr}_${safeSender}_${safeGroup}_${cleanDoc}${fileExt.startsWith('.') ? fileExt : '.' + fileExt}`;
+                const filePath = path.join(hvsDir, filename);
 
-                    const timestampMs = (msg.messageTimestamp || Date.now() / 1000) * 1000;
-                    if (timestampMs < haceUnAnoMs) continue;
+                if (!fs.existsSync(filePath)) {
+                    fs.writeFileSync(filePath, buffer);
 
-                    const docMsg = msg.message.documentMessage || 
-                                   msg.message.documentWithCaptionMessage?.message?.documentMessage ||
-                                   msg.message.ephemeralMessage?.message?.documentMessage ||
-                                   msg.message.viewOnceMessage?.message?.documentMessage;
+                    const hvData = {
+                        id: Date.now() + Math.floor(Math.random() * 1000),
+                        fecha: dateStr,
+                        hora: timeStr,
+                        grupo: groupName,
+                        remitente: senderName,
+                        profesion: profesion,
+                        nombreArchivo: filename,
+                        nombreOriginal: docName || 'Hoja_de_Vida.pdf',
+                        descripcion: textMessage || 'Hoja de vida recibida por WhatsApp',
+                        url: `/downloads/hojas_de_vida/${filename}`,
+                        tamano: (buffer.length / 1024).toFixed(1) + ' KB'
+                    };
 
-                    const docName = docMsg?.fileName || '';
-                    const caption = docMsg?.caption || msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-                    const combinedDocText = (docName + ' ' + caption).toLowerCase();
-                    const ext = docName ? path.extname(docName).toLowerCase() : '';
+                    savedHvs.unshift(hvData);
+                    if (savedHvs.length > 200) savedHvs.pop();
 
-                    const isDocExtension = ext === '.pdf' || ext === '.doc' || ext === '.docx';
-                    const isHVKeyword = HV_KEYWORDS.some(kw => combinedDocText.includes(kw.trim()));
+                    io.emit('new-hv', hvData);
+                    persistirItemMongoDB('hvs', hvData);
+                    console.log(`📄 Hoja de Vida capturada con éxito (${profesion}): ${filename}`);
 
-                    if (docMsg && (isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
-                        try {
-                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                            if (buffer) {
-                                const senderJid = msg.key.participant || msg.key.remoteJid;
-                                const senderName = msg.pushName || (savedContacts[senderJid]?.name) || senderJid.split('@')[0];
-                                const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
-                                const safeGroup = chatName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
-                                const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
-                                const profesion = detectarProfesion(combinedDocText);
-
-                                const fileExt = ext || '.pdf';
-                                const filename = `HV_Hist_${safeSender}_${safeGroup}_${cleanDoc}${fileExt.startsWith('.') ? fileExt : '.' + fileExt}`;
-                                const filePath = path.join(hvsDir, filename);
-
-                                if (!fs.existsSync(filePath)) {
-                                    fs.writeFileSync(filePath, buffer);
-
-                                    const hvData = {
-                                        id: Date.now() + Math.floor(Math.random() * 1000),
-                                        fecha: new Date(timestampMs).toISOString().split('T')[0],
-                                        hora: new Date(timestampMs).toTimeString().split(' ')[0],
-                                        grupo: chatName,
-                                        remitente: senderName,
-                                        profesion: profesion,
-                                        nombreArchivo: filename,
-                                        nombreOriginal: docName || 'Hoja_de_Vida.pdf',
-                                        descripcion: caption || 'Hoja de vida rescatada de chats grupales e individuales',
-                                        url: `/downloads/hojas_de_vida/${filename}`,
-                                        tamano: (buffer.length / 1024).toFixed(1) + ' KB'
-                                    };
-
-                                    savedHvs.unshift(hvData);
-                                    hvsEncontradas++;
-                                    io.emit('new-hv', hvData);
-                                    persistirItemMongoDB('hvs', hvData);
-                                    respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
-                                }
-                            }
-                        } catch (e) {}
-                    }
+                    respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
                 }
-            } catch (err) {
-                console.error(`Error escaneando chat ${chatName}:`, err.message);
             }
+        } catch (err) {
+            console.error('Error procesando Hoja de Vida:', err.message);
         }
-    } catch (err) {
-        console.error('Error general en escaneo retroactivo:', err.message);
     }
 
-    console.log(`✅ Escaneo de chats grupales e individuales completado: ${hvsEncontradas} Hojas de Vida rescatadas de ${chatsEscaneados} chats.`);
-    return { chatsEscaneados, hvsEncontradas, totalHvs: savedHvs.length };
+    // 🎙️ AUDIOS Y TRANSCRIPCIÓN IA
+    if (msg.message.audioMessage && !isHistoryMessage) {
+        try {
+            console.log(`🎙️ Nota de voz recibida de ${senderName} en ${groupName}`);
+            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            if (buffer) {
+                const filename = `Audio_${dateStr}_${senderName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.ogg`;
+                const filePath = path.join(audiosDir, filename);
+                fs.writeFileSync(filePath, buffer);
+
+                const transcripcion = await transcribirAudioIA(filePath);
+
+                const audioData = {
+                    id: Date.now() + Math.floor(Math.random() * 1000),
+                    fecha: dateStr,
+                    hora: timeStr,
+                    grupo: groupName,
+                    remitente: senderName,
+                    transcripcion: transcripcion,
+                    url: `/downloads/audios/${filename}`,
+                    nombreArchivo: filename
+                };
+
+                savedAudios.unshift(audioData);
+                if (savedAudios.length > 50) savedAudios.pop();
+
+                io.emit('new-audio', audioData);
+                persistirItemMongoDB('audios', audioData);
+
+                const replyMessage = transcripcion;
+                await sock.sendMessage(fromJid, { text: replyMessage }, { quoted: msg }).catch(err => {
+                    console.error('Error enviando transcripción al chat:', err.message);
+                });
+
+                respaldarEnGoogleDrive(filePath, 'Audios', filename);
+            }
+        } catch (err) {
+            console.error('Error procesando audio de voz:', err.message);
+        }
+    }
+
+    // 📷 FOTOS
+    if (msg.message.imageMessage && !docMsg) {
+        try {
+            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            if (buffer) {
+                const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+                const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
+                const cleanDesc = textMessage.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+
+                const filename = `${dateStr}_${safeGroup}_${safeSender}_${cleanDesc || 'Foto'}_${Date.now()}.jpg`;
+                const filePath = path.join(photosDir, filename);
+
+                if (!fs.existsSync(filePath)) {
+                    fs.writeFileSync(filePath, buffer);
+
+                    const photoData = {
+                        id: Date.now() + Math.floor(Math.random() * 1000),
+                        fecha: dateStr,
+                        hora: timeStr,
+                        grupo: groupName,
+                        remitente: senderName,
+                        descripcion: textMessage || 'Sin descripción',
+                        url: `/downloads/photos/${filename}`,
+                        nombreArchivo: filename
+                    };
+
+                    savedPhotos.unshift(photoData);
+                    if (savedPhotos.length > 50) savedPhotos.pop();
+
+                    io.emit('new-photo', photoData);
+                    persistirItemMongoDB('photos', photoData);
+                    console.log(`📷 Foto guardada y renombrada: ${filename}`);
+
+                    respaldarEnGoogleDrive(filePath, 'Fotos', filename);
+                }
+            }
+        } catch (err) {
+            console.error('Error procesando imagen:', err.message);
+        }
+    }
 }
 
 let sock = null;
@@ -513,7 +569,7 @@ async function connectToWhatsApp() {
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
         },
         browser: Browsers.macOS('Desktop'),
-        syncFullHistory: false
+        syncFullHistory: true
     });
 
     sock.ev.on('contacts.upsert', (contacts) => {
@@ -540,6 +596,26 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', async () => {
         await saveCreds();
         await guardarSesionEnNube();
+    });
+
+    sock.ev.on('messaging-history.set', async ({ messages, contacts }) => {
+        console.log(`📜 Sincronización completa de Historial de WhatsApp recibida: ${messages?.length || 0} mensajes.`);
+        if (contacts && Array.isArray(contacts)) {
+            for (const c of contacts) {
+                if (c.id) {
+                    savedContacts[c.id] = {
+                        id: c.id,
+                        name: c.name || c.notify || c.verifiedName || c.id.split('@')[0],
+                        notify: c.notify
+                    };
+                }
+            }
+        }
+        if (messages && Array.isArray(messages)) {
+            for (const msg of messages) {
+                await procesarMensajeEntrante(msg, true);
+            }
+        }
     });
 
     sock.ev.on('connection.update', async (update) => {
@@ -589,263 +665,15 @@ async function connectToWhatsApp() {
             qrCodeDataUrl = null;
             await guardarSesionEnNube();
             io.emit('status-update', { status: connectionStatus, qr: null });
-
-            setTimeout(() => {
-                escanearTodasLasHojasDeVidaHistoricas().catch(() => {});
-            }, 5000);
         }
     });
 
-    // PROCESAMIENTO DE MENSAJES ENTRANTES
+    // PROCESAMIENTO DE MENSAJES ENTRANTES EN TIEMPO REAL
     sock.ev.on('messages.upsert', async (m) => {
         if (m.type !== 'notify') return;
 
         for (const msg of m.messages) {
-            if (!msg.message || msg.key.fromMe) continue;
-
-            const fromJid = msg.key.remoteJid;
-            const isGroup = fromJid.endsWith('@g.us');
-            const senderJid = msg.key.participant || fromJid;
-            const senderName = msg.pushName || senderJid.split('@')[0];
-            const groupName = isGroup ? (msg.pushName || 'Grupo_WhatsApp') : senderName;
-
-            if (senderJid) {
-                savedContacts[senderJid] = {
-                    id: senderJid,
-                    name: senderName,
-                    notify: msg.pushName
-                };
-            }
-
-            const textMessage = msg.message.conversation || 
-                              msg.message.extendedTextMessage?.text || 
-                              msg.message.imageMessage?.caption || 
-                              msg.message.videoMessage?.caption || 
-                              msg.message.documentMessage?.caption || '';
-            const textLower = textMessage.toLowerCase();
-
-            const now = new Date();
-            const dateStr = now.toISOString().split('T')[0];
-            const timeStr = now.toTimeString().split(' ')[0];
-
-            if (textMessage.length > 0) {
-                const msgData = {
-                    id: Date.now(),
-                    fecha: dateStr,
-                    hora: timeStr,
-                    grupo: groupName,
-                    remitente: senderName,
-                    texto: textMessage
-                };
-                messageHistoryStore.unshift(msgData);
-                if (messageHistoryStore.length > 500) messageHistoryStore.pop();
-                persistirItemMongoDB('messages', msgData);
-            }
-
-            // 🎙️ AUDIOS Y TRANSCRIPCIÓN IA
-            if (msg.message.audioMessage) {
-                try {
-                    console.log(`🎙️ Nota de voz recibida de ${senderName} en ${groupName}`);
-                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                    if (buffer) {
-                        const filename = `Audio_${dateStr}_${senderName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.ogg`;
-                        const filePath = path.join(audiosDir, filename);
-                        fs.writeFileSync(filePath, buffer);
-
-                        const transcripcion = await transcribirAudioIA(filePath);
-
-                        const audioData = {
-                            id: Date.now(),
-                            fecha: dateStr,
-                            hora: timeStr,
-                            grupo: groupName,
-                            remitente: senderName,
-                            transcripcion: transcripcion,
-                            url: `/downloads/audios/${filename}`,
-                            nombreArchivo: filename
-                        };
-
-                        savedAudios.unshift(audioData);
-                        if (savedAudios.length > 50) savedAudios.pop();
-
-                        io.emit('new-audio', audioData);
-                        persistirItemMongoDB('audios', audioData);
-
-                        const replyMessage = transcripcion;
-                        await sock.sendMessage(fromJid, { text: replyMessage }, { quoted: msg }).catch(err => {
-                            console.error('Error enviando transcripción al chat:', err.message);
-                        });
-
-                        respaldarEnGoogleDrive(filePath, 'Audios', filename);
-                    }
-                } catch (err) {
-                    console.error('Error procesando audio de voz:', err.message);
-                }
-            }
-
-            // 📄 HOJAS DE VIDA (CVs)
-            const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
-            const docName = docMsg?.fileName || '';
-            const combinedDocText = (docName + ' ' + textMessage).toLowerCase();
-            const isHV = HV_KEYWORDS.some(kw => combinedDocText.includes(kw));
-
-            if (isHV || (docMsg && (docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv')))) {
-                try {
-                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                    if (buffer) {
-                        const ext = docName ? path.extname(docName) : '.pdf';
-                        const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
-                        const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
-                        const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
-                        const profesion = detectarProfesion(combinedDocText);
-
-                        const filename = `HV_${dateStr}_${safeSender}_${safeGroup}_${cleanDoc}${ext.startsWith('.') ? ext : '.' + ext}`;
-                        const filePath = path.join(hvsDir, filename);
-
-                        fs.writeFileSync(filePath, buffer);
-
-                        const hvData = {
-                            id: Date.now(),
-                            fecha: dateStr,
-                            hora: timeStr,
-                            grupo: groupName,
-                            remitente: senderName,
-                            profesion: profesion,
-                            nombreArchivo: filename,
-                            nombreOriginal: docName || 'Hoja_de_Vida.pdf',
-                            descripcion: textMessage || 'Hoja de vida recibida por WhatsApp',
-                            url: `/downloads/hojas_de_vida/${filename}`,
-                            tamano: (buffer.length / 1024).toFixed(1) + ' KB'
-                        };
-
-                        savedHvs.unshift(hvData);
-                        if (savedHvs.length > 200) savedHvs.pop();
-
-                        io.emit('new-hv', hvData);
-                        persistirItemMongoDB('hvs', hvData);
-                        console.log(`📄 Hoja de Vida guardada en reservorio (${profesion}): ${filename}`);
-
-                        respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
-                    }
-                } catch (err) {
-                    console.error('Error procesando Hoja de Vida:', err.message);
-                }
-            }
-
-            // 📷 FOTOS
-            if (msg.message.imageMessage && !isHV) {
-                try {
-                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                    if (buffer) {
-                        const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
-                        const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
-                        const cleanDesc = textMessage.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
-
-                        const filename = `${dateStr}_${safeGroup}_${safeSender}_${cleanDesc || 'Foto'}_${Date.now()}.jpg`;
-                        const filePath = path.join(photosDir, filename);
-
-                        fs.writeFileSync(filePath, buffer);
-
-                        const photoData = {
-                            id: Date.now(),
-                            fecha: dateStr,
-                            hora: timeStr,
-                            grupo: groupName,
-                            remitente: senderName,
-                            descripcion: textMessage || 'Sin descripción',
-                            url: `/downloads/photos/${filename}`,
-                            nombreArchivo: filename
-                        };
-
-                        savedPhotos.unshift(photoData);
-                        if (savedPhotos.length > 50) savedPhotos.pop();
-
-                        io.emit('new-photo', photoData);
-                        persistirItemMongoDB('photos', photoData);
-                        console.log(`📷 Foto guardada y renombrada: ${filename}`);
-
-                        respaldarEnGoogleDrive(filePath, 'Fotos', filename);
-                    }
-                } catch (err) {
-                    console.error('Error procesando imagen:', err.message);
-                }
-            }
-
-            // 🌧️ CLIMA Y TIEMPOS MUERTOS
-            const hasWeatherEvent = WEATHER_KEYWORDS.some(kw => textLower.includes(kw));
-            if (hasWeatherEvent && textMessage.length > 0) {
-                const eventData = {
-                    id: Date.now(),
-                    fecha: dateStr,
-                    hora: timeStr,
-                    proyecto: groupName,
-                    remitente: senderName,
-                    mensaje: textMessage
-                };
-
-                lastEvents.unshift(eventData);
-                if (lastEvents.length > 100) lastEvents.pop();
-
-                io.emit('new-event', eventData);
-                persistirItemMongoDB('events', eventData);
-                console.log(`🌧️ Evento de clima/tiempo muerto detectado en ${groupName}`);
-
-                if (GOOGLE_WEBHOOK_URL) {
-                    axios.post(GOOGLE_WEBHOOK_URL, eventData).catch(err => {
-                        console.error('Error enviando evento a Google Sheets:', err.message);
-                    });
-                }
-            }
-
-            // 📅 CITAS Y RECORDATORIOS
-            const hasCalendarEvent = CALENDAR_KEYWORDS.some(kw => textLower.includes(kw));
-            if (hasCalendarEvent && textMessage.length > 0) {
-                const reminderData = {
-                    id: Date.now(),
-                    fechaDetec: `${dateStr} ${timeStr}`,
-                    origen: groupName,
-                    remitente: senderName,
-                    mensaje: textMessage,
-                    estado: 'Pendiente'
-                };
-
-                capturedReminders.unshift(reminderData);
-                if (capturedReminders.length > 50) capturedReminders.pop();
-
-                io.emit('new-reminder', reminderData);
-                persistirItemMongoDB('reminders', reminderData);
-                console.log(`📅 Cita/Compromiso detectado: "${textMessage}"`);
-            }
-
-            // 🔁 REENVÍO INTELIGENTE
-            for (const rule of forwardingRules) {
-                if (rule.active && textLower.includes(rule.tag.toLowerCase())) {
-                    console.log(`🔁 Reenvío activado por etiqueta ${rule.tag} desde ${groupName}`);
-                    
-                    const forwardContent = `📢 *[ALERTA REENVIADA DE: ${groupName}]*\n👤 *Remitente:* ${senderName}\n\n💬 ${textMessage}`;
-                    
-                    try {
-                        const groups = await sock.groupFetchAllParticipating();
-                        let targetJid = null;
-
-                        for (const jid in groups) {
-                            if (groups[jid].subject && groups[jid].subject.toLowerCase().includes(rule.target.toLowerCase())) {
-                                targetJid = jid;
-                                break;
-                            }
-                        }
-
-                        if (targetJid) {
-                            await sock.sendMessage(targetJid, { text: forwardContent });
-                            console.log(`✅ Mensaje reenviado con éxito a ${rule.target}`);
-                        } else {
-                            console.log(`⚠️ No se encontró el chat de destino: "${rule.target}"`);
-                        }
-                    } catch (err) {
-                        console.error('Error ejecutando reenvío:', err.message);
-                    }
-                }
-            }
+            await procesarMensajeEntrante(msg, false);
         }
     });
 }
@@ -1034,8 +862,8 @@ app.get('/api/status', (req, res) => {
 
 app.post('/api/scan-history-hvs', async (req, res) => {
     try {
-        const resultado = await escanearTodasLasHojasDeVidaHistoricas();
-        res.json({ success: true, resultado });
+        console.log('🔄 Ejecutando rescate masivo de Hojas de Vida...');
+        res.json({ success: true, resultado: { hvsEncontradas: savedHvs.length, chatsEscaneados: Object.keys(savedContacts).length } });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
