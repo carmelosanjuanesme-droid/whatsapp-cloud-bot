@@ -55,7 +55,7 @@ let savedHvs = [];
 let savedAudios = [];
 let capturedReminders = [];
 let savedContacts = {};
-let messageHistoryStore = []; // 🔍 HISTORIAL DE MENSAJES PARA BÚSQUEDA
+let messageHistoryStore = [];
 let forwardingRules = [
     { tag: '#urgente', target: TARGET_FORWARD_CHAT_NAME, active: true },
     { tag: '#gerencia', target: TARGET_FORWARD_CHAT_NAME, active: true },
@@ -105,7 +105,7 @@ function detectarProfesion(texto) {
     return '📋 General / Otras Profesiones';
 }
 
-// 🍃 CONEXIÓN A MONGODB ATLAS
+// 🍃 CONEXIÓN A MONGODB ATLAS Y CARGA AUTOMÁTICA DE DATOS
 let mongoClient = null;
 let mongoDb = null;
 
@@ -123,12 +123,41 @@ async function initMongoDB() {
             });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
-            console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Activa)');
+            console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Total Activa)');
+            
+            // Cargar datos persistidos al iniciar el servidor
+            await cargarDatosDesdeMongoDB();
         }
         return mongoDb;
     } catch (e) {
         console.error('⚠️ Error conectando a MongoDB Atlas:', e.message);
         return null;
+    }
+}
+
+async function cargarDatosDesdeMongoDB() {
+    if (!mongoDb) return;
+    try {
+        savedPhotos = await mongoDb.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray() || [];
+        savedHvs = await mongoDb.collection('hvs').find({}).sort({ id: -1 }).limit(200).toArray() || [];
+        savedAudios = await mongoDb.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray() || [];
+        capturedReminders = await mongoDb.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray() || [];
+        lastEvents = await mongoDb.collection('events').find({}).sort({ id: -1 }).limit(100).toArray() || [];
+        messageHistoryStore = await mongoDb.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray() || [];
+        console.log(`🍃 Datos persistentes restaurados desde MongoDB Atlas: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios, ${capturedReminders.length} citas.`);
+    } catch (e) {
+        console.error('Error restaurando datos desde MongoDB Atlas:', e.message);
+    }
+}
+
+async function persistirItemMongoDB(coleccion, item) {
+    try {
+        const db = await initMongoDB();
+        if (db) {
+            await db.collection(coleccion).updateOne({ id: item.id }, { $set: item }, { upsert: true });
+        }
+    } catch (e) {
+        console.error(`Error guardando en colección ${coleccion}:`, e.message);
     }
 }
 
@@ -267,7 +296,6 @@ async function buscarContenidosUniversal(query) {
 
     const resultados = [];
 
-    // 1. Buscar en mensajes de chats almacenados
     for (const msg of messageHistoryStore) {
         if ((msg.texto || '').toLowerCase().includes(term) || (msg.remitente || '').toLowerCase().includes(term) || (msg.grupo || '').toLowerCase().includes(term)) {
             resultados.push({
@@ -280,7 +308,6 @@ async function buscarContenidosUniversal(query) {
         }
     }
 
-    // 2. Buscar en Transcripciones de Audios de Voz
     for (const audio of savedAudios) {
         if ((audio.transcripcion || '').toLowerCase().includes(term) || (audio.remitente || '').toLowerCase().includes(term) || (audio.grupo || '').toLowerCase().includes(term)) {
             resultados.push({
@@ -294,7 +321,6 @@ async function buscarContenidosUniversal(query) {
         }
     }
 
-    // 3. Buscar en Hojas de Vida (CVs)
     for (const hv of savedHvs) {
         if ((hv.descripcion || '').toLowerCase().includes(term) || (hv.remitente || '').toLowerCase().includes(term) || (hv.profesion || '').toLowerCase().includes(term) || (hv.nombreOriginal || '').toLowerCase().includes(term)) {
             resultados.push({
@@ -308,7 +334,6 @@ async function buscarContenidosUniversal(query) {
         }
     }
 
-    // 4. Buscar en Fotografías
     for (const photo of savedPhotos) {
         if ((photo.descripcion || '').toLowerCase().includes(term) || (photo.remitente || '').toLowerCase().includes(term) || (photo.grupo || '').toLowerCase().includes(term)) {
             resultados.push({
@@ -387,6 +412,7 @@ async function escanearTodasLasHojasDeVidaHistoricas() {
                                     savedHvs.unshift(hvData);
                                     hvsEncontradas++;
                                     io.emit('new-hv', hvData);
+                                    persistirItemMongoDB('hvs', hvData);
                                     respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
                                 }
                             }
@@ -534,17 +560,18 @@ async function connectToWhatsApp() {
             const dateStr = now.toISOString().split('T')[0];
             const timeStr = now.toTimeString().split(' ')[0];
 
-            // Guardar en historial de mensajes para búsqueda
             if (textMessage.length > 0) {
-                messageHistoryStore.unshift({
+                const msgData = {
                     id: Date.now(),
                     fecha: dateStr,
                     hora: timeStr,
                     grupo: groupName,
                     remitente: senderName,
                     texto: textMessage
-                });
+                };
+                messageHistoryStore.unshift(msgData);
                 if (messageHistoryStore.length > 500) messageHistoryStore.pop();
+                persistirItemMongoDB('messages', msgData);
             }
 
             // 🎙️ AUDIOS Y TRANSCRIPCIÓN IA
@@ -574,6 +601,7 @@ async function connectToWhatsApp() {
                         if (savedAudios.length > 50) savedAudios.pop();
 
                         io.emit('new-audio', audioData);
+                        persistirItemMongoDB('audios', audioData);
 
                         const replyMessage = `🎙️ *[Transcripción Automática de Nota de Voz]*\n👤 *De:* ${senderName}\n\n💬 "${transcripcion}"`;
                         await sock.sendMessage(fromJid, { text: replyMessage }, { quoted: msg }).catch(err => {
@@ -626,6 +654,7 @@ async function connectToWhatsApp() {
                         if (savedHvs.length > 200) savedHvs.pop();
 
                         io.emit('new-hv', hvData);
+                        persistirItemMongoDB('hvs', hvData);
                         console.log(`📄 Hoja de Vida guardada en reservorio (${profesion}): ${filename}`);
 
                         respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
@@ -664,6 +693,7 @@ async function connectToWhatsApp() {
                         if (savedPhotos.length > 50) savedPhotos.pop();
 
                         io.emit('new-photo', photoData);
+                        persistirItemMongoDB('photos', photoData);
                         console.log(`📷 Foto guardada y renombrada: ${filename}`);
 
                         respaldarEnGoogleDrive(filePath, 'Fotos', filename);
@@ -689,6 +719,7 @@ async function connectToWhatsApp() {
                 if (lastEvents.length > 100) lastEvents.pop();
 
                 io.emit('new-event', eventData);
+                persistirItemMongoDB('events', eventData);
                 console.log(`🌧️ Evento de clima/tiempo muerto detectado en ${groupName}`);
 
                 if (GOOGLE_WEBHOOK_URL) {
@@ -714,6 +745,7 @@ async function connectToWhatsApp() {
                 if (capturedReminders.length > 50) capturedReminders.pop();
 
                 io.emit('new-reminder', reminderData);
+                persistirItemMongoDB('reminders', reminderData);
                 console.log(`📅 Cita/Compromiso detectado: "${textMessage}"`);
             }
 
@@ -954,8 +986,9 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
     console.log(`🌐 Servidor Hub WhatsApp (Baileys) escuchando en puerto ${PORT}`);
+    await initMongoDB();
     connectToWhatsApp().catch(err => {
         console.error('❌ Error conectando a WhatsApp Baileys:', err);
     });

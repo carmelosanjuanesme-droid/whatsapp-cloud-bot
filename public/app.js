@@ -87,13 +87,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             if (data && data.status) {
                 updateStatusUI(data.status, data.qr);
-                if (data.photos && data.photos.length > 0) renderPhotos(data.photos);
-                if (data.hvs && data.hvs.length > 0) {
+                if (data.photos) renderPhotos(data.photos);
+                if (data.hvs) {
                     currentHvsList = data.hvs;
                     renderHvs(currentHvsList);
                 }
-                if (data.audios && data.audios.length > 0) renderAudios(data.audios);
-                if (data.reminders && data.reminders.length > 0) renderReminders(data.reminders);
+                if (data.audios) renderAudios(data.audios);
+                if (data.reminders) renderReminders(data.reminders);
             }
         } catch (e) {}
     }
