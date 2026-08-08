@@ -164,7 +164,16 @@ async function persistirItemMongoDB(coleccion, item) {
     }
 }
 
-// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD
+function isBase64Str(str) {
+    if (!str || typeof str !== 'string') return false;
+    try {
+        return Buffer.from(str, 'base64').toString('base64') === str.trim();
+    } catch (e) {
+        return false;
+    }
+}
+
+// 🔒 MOTOR DE PERSISTENCIA DE SESIÓN CLOUD (ENCODING BASE64)
 async function guardarSesionEnNube() {
     if (!fs.existsSync(authDir)) return;
     try {
@@ -173,7 +182,7 @@ async function guardarSesionEnNube() {
         for (const file of files) {
             const fullPath = path.join(authDir, file);
             if (fs.statSync(fullPath).isFile()) {
-                sessionStore[file] = fs.readFileSync(fullPath, 'utf-8');
+                sessionStore[file] = fs.readFileSync(fullPath).toString('base64');
             }
         }
         
@@ -191,7 +200,7 @@ async function guardarSesionEnNube() {
                 );
                 savedCount++;
             }
-            console.log(`🔒 Sesión guardada con éxito en MongoDB Atlas (${savedCount} archivos respaldados).`);
+            console.log(`🔒 Sesión guardada en Base64 en MongoDB Atlas (${savedCount} archivos respaldados).`);
         }
 
         if (GOOGLE_WEBHOOK_URL) {
@@ -215,9 +224,12 @@ async function restaurarSesionDesdeNube() {
             const docs = await collection.find({}).toArray();
             if (docs && docs.length > 0) {
                 for (const doc of docs) {
-                    fs.writeFileSync(path.join(authDir, doc._id), doc.content);
+                    const fileBuffer = isBase64Str(doc.content) 
+                        ? Buffer.from(doc.content, 'base64') 
+                        : Buffer.from(doc.content, 'utf-8');
+                    fs.writeFileSync(path.join(authDir, doc._id), fileBuffer);
                 }
-                console.log(`🍃 Sesión restaurada con éxito desde MongoDB Atlas (${docs.length} archivos devueltos a disco).`);
+                console.log(`🍃 Sesión restaurada desde MongoDB Atlas (${docs.length} archivos devueltos a disco sin corrupción).`);
                 return true;
             }
         }
@@ -227,10 +239,13 @@ async function restaurarSesionDesdeNube() {
             const sessionStore = JSON.parse(raw);
             let restCount = 0;
             for (const file in sessionStore) {
-                fs.writeFileSync(path.join(authDir, file), sessionStore[file]);
+                const fileBuffer = isBase64Str(sessionStore[file])
+                    ? Buffer.from(sessionStore[file], 'base64')
+                    : Buffer.from(sessionStore[file], 'utf-8');
+                fs.writeFileSync(path.join(authDir, file), fileBuffer);
                 restCount++;
             }
-            console.log(`✅ Sesión restaurada con éxito desde respaldo local (${restCount} archivos).`);
+            console.log(`✅ Sesión restaurada desde respaldo local (${restCount} archivos).`);
             return true;
         }
 
@@ -239,9 +254,12 @@ async function restaurarSesionDesdeNube() {
             if (res && res.data && res.data.sessionData) {
                 const sessionStore = JSON.parse(res.data.sessionData);
                 for (const file in sessionStore) {
-                    fs.writeFileSync(path.join(authDir, file), sessionStore[file]);
+                    const fileBuffer = isBase64Str(sessionStore[file])
+                        ? Buffer.from(sessionStore[file], 'base64')
+                        : Buffer.from(sessionStore[file], 'utf-8');
+                    fs.writeFileSync(path.join(authDir, file), fileBuffer);
                 }
-                console.log('☁️ Sesión restaurada con éxito desde Google Cloud.');
+                console.log('☁️ Sesión restaurada desde Google Cloud.');
                 return true;
             }
         }
