@@ -132,6 +132,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (err) {
                 alert(`Error en escaneo de chats: ${err.message}`);
+            } finally {
+                btnScanAllHvs.disabled = false;
+                btnScanAllHvs.textContent = '🔍 Escanear Todos los Chats de WhatsApp (Buscar HVs Históricas)';
+            }
         });
     }
 
