@@ -569,7 +569,7 @@ async function connectToWhatsApp() {
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
         },
         browser: Browsers.macOS('Desktop'),
-        syncFullHistory: true
+        syncFullHistory: false
     });
 
     sock.ev.on('contacts.upsert', (contacts) => {
