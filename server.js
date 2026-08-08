@@ -567,8 +567,10 @@ async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const isSessionRegistered = Boolean(state?.creds?.me?.id);
 
-    connectionStatus = isSessionRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
-    io.emit('status-update', { status: connectionStatus, qr: null });
+    if (connectionStatus !== 'ESPERANDO_QR') {
+        connectionStatus = isSessionRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
+        io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
+    }
 
     const socketOptions = {
         logger: pino({ level: 'silent' }),
