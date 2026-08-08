@@ -110,23 +110,23 @@ let mongoClient = null;
 let mongoDb = null;
 
 async function initMongoDB() {
-    if (!MONGODB_URI) return null;
+    if (!MONGODB_URI) {
+        console.log('⚠️ MONGODB_URI no configurado.');
+        return null;
+    }
     try {
         if (!mongoClient) {
-            let uri = MONGODB_URI;
+            let uri = MONGODB_URI.trim();
             if (!uri.includes('tlsAllowInvalidCertificates')) {
                 uri += (uri.includes('?') ? '&' : '?') + 'tls=true&tlsAllowInvalidCertificates=true';
             }
             mongoClient = new MongoClient(uri, {
-                serverSelectionTimeoutMS: 5000,
-                connectTimeoutMS: 10000
+                serverSelectionTimeoutMS: 8000,
+                connectTimeoutMS: 15000
             });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
-            console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Total Activa)');
-            
-            // Cargar datos persistidos al iniciar el servidor
-            await cargarDatosDesdeMongoDB();
+            console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Activa)');
         }
         return mongoDb;
     } catch (e) {
@@ -179,14 +179,16 @@ async function guardarSesionEnNube() {
         const db = await initMongoDB();
         if (db) {
             const collection = db.collection('session_auth');
+            let savedCount = 0;
             for (const file in sessionStore) {
                 await collection.updateOne(
                     { _id: file },
                     { $set: { content: sessionStore[file], updatedAt: new Date() } },
                     { upsert: true }
                 );
+                savedCount++;
             }
-            console.log('🔒 Sesión guardada con éxito en MongoDB Atlas.');
+            console.log(`🔒 Sesión guardada con éxito en MongoDB Atlas (${savedCount} archivos respaldados).`);
         }
 
         if (GOOGLE_WEBHOOK_URL) {
@@ -212,7 +214,7 @@ async function restaurarSesionDesdeNube() {
                 for (const doc of docs) {
                     fs.writeFileSync(path.join(authDir, doc._id), doc.content);
                 }
-                console.log('🍃 Sesión restaurada con éxito desde MongoDB Atlas.');
+                console.log(`🍃 Sesión restaurada con éxito desde MongoDB Atlas (${docs.length} archivos devueltos a disco).`);
                 return true;
             }
         }
@@ -220,10 +222,12 @@ async function restaurarSesionDesdeNube() {
         if (fs.existsSync(backupFile)) {
             const raw = fs.readFileSync(backupFile, 'utf-8');
             const sessionStore = JSON.parse(raw);
+            let restCount = 0;
             for (const file in sessionStore) {
                 fs.writeFileSync(path.join(authDir, file), sessionStore[file]);
+                restCount++;
             }
-            console.log('✅ Sesión restaurada con éxito desde respaldo local.');
+            console.log(`✅ Sesión restaurada con éxito desde respaldo local (${restCount} archivos).`);
             return true;
         }
 
@@ -436,9 +440,9 @@ let sock = null;
 async function connectToWhatsApp() {
     console.log('⚡ Iniciando conexión a WhatsApp con Persistencia MongoDB Atlas...');
     
-    await restaurarSesionDesdeNube();
+    const tieneSesion = await restaurarSesionDesdeNube();
 
-    connectionStatus = 'INICIALIZANDO';
+    connectionStatus = tieneSesion ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
     io.emit('status-update', { status: connectionStatus, qr: null });
 
     const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] }));
@@ -484,8 +488,8 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
-            console.log('📌 Código QR de Baileys generado en <1 segundo. Listo para escanear.');
+        if (qr && connectionStatus !== 'CONECTADO_24_7') {
+            console.log('📌 Código QR de Baileys generado. Listo para escanear.');
             connectionStatus = 'ESPERANDO_QR';
             try {
                 qrCodeDataUrl = await qrcode.toDataURL(qr);
@@ -506,9 +510,11 @@ async function connectToWhatsApp() {
                     fs.rmSync(authDir, { recursive: true, force: true });
                     if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
                 } catch (e) {}
+                connectionStatus = 'DESCONECTADO';
+            } else {
+                connectionStatus = 'RECONECTANDO';
             }
 
-            connectionStatus = 'DESCONECTADO';
             qrCodeDataUrl = null;
             io.emit('status-update', { status: connectionStatus, qr: null });
 
