@@ -122,7 +122,8 @@ async function initMongoDB() {
                 uri += (uri.includes('?') ? '&' : '?') + 'tls=true&tlsAllowInvalidCertificates=true';
             }
             mongoClient = new MongoClient(uri, {
-                serverSelectionTimeoutMS: 8000,
+                family: 4,
+                serverSelectionTimeoutMS: 10000,
                 connectTimeoutMS: 15000
             });
             await mongoClient.connect();
@@ -134,6 +135,8 @@ async function initMongoDB() {
         return mongoDb;
     } catch (e) {
         console.error('⚠️ Error conectando a MongoDB Atlas:', e.message);
+        mongoClient = null;
+        mongoDb = null;
         return null;
     }
 }
