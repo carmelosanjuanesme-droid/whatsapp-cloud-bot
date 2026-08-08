@@ -570,10 +570,8 @@ async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const isSessionRegistered = Boolean(state?.creds?.me?.id);
 
-    if (connectionStatus !== 'ESPERANDO_QR') {
-        connectionStatus = isSessionRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
-        io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
-    }
+    connectionStatus = isSessionRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
+    io.emit('status-update', { status: connectionStatus, qr: isSessionRegistered ? null : qrCodeDataUrl });
 
     const socketOptions = {
         logger: pino({ level: 'silent' }),
@@ -650,7 +648,7 @@ async function connectToWhatsApp() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
 
-            console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. LoggedOut: ${isLoggedOut}`);
+            console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. LoggedOut: ${isLoggedOut}. Registered: ${isRegistered}`);
 
             if (isLoggedOut) {
                 console.log('🧹 Sesión desvinculada por WhatsApp. Limpiando credenciales...');
@@ -667,10 +665,10 @@ async function connectToWhatsApp() {
             } else {
                 console.log('🔄 Reabriendo socket de WhatsApp tras escaneo/reconexión...');
                 if (connectionStatus !== 'CONECTADO_24_7') {
-                    connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'ESPERANDO_QR';
+                    connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
                 }
-                io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
-                setTimeout(connectToWhatsApp, 1500);
+                io.emit('status-update', { status: connectionStatus, qr: isRegistered ? null : qrCodeDataUrl });
+                setTimeout(connectToWhatsApp, 2000);
             }
         } else if (connection === 'open') {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
