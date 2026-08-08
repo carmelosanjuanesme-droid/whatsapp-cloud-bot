@@ -570,10 +570,6 @@ async function connectToWhatsApp() {
     connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
     io.emit('status-update', { status: connectionStatus, qr: null });
 
-    const baileyVer = await fetchLatestBaileysVersion().catch(() => null);
-    const version = baileyVer ? baileyVer.version : undefined;
-    if (version) console.log(`📌 Versión de WhatsApp Web obtenida: v${version.join('.')}`);
-
     const socketOptions = {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
@@ -581,8 +577,6 @@ async function connectToWhatsApp() {
         browser: Browsers.macOS('Desktop'),
         syncFullHistory: false
     };
-
-    if (version) socketOptions.version = version;
 
     sock = makeWASocket(socketOptions);
 
