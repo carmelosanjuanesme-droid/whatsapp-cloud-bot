@@ -49,11 +49,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const hubPanes = document.querySelectorAll('.hub-pane');
 
     navItems.forEach(item => {
-        item.addEventListener('click', () => {
-            const targetHub = item.dataset.hub;
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetHub = item.getAttribute('data-hub');
+            if (!targetHub) return;
 
             navItems.forEach(n => {
-                if (n.dataset.hub === targetHub) n.classList.add('active');
+                if (n.getAttribute('data-hub') === targetHub) n.classList.add('active');
                 else n.classList.remove('active');
             });
 
