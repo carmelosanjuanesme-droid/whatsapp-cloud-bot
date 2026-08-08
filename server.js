@@ -565,9 +565,9 @@ async function connectToWhatsApp() {
     await restaurarSesionDesdeNube();
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
-    const isRegistered = state?.creds?.registered === true || Boolean(state?.creds?.me);
+    const isSessionRegistered = Boolean(state?.creds?.me?.id);
 
-    connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
+    connectionStatus = isSessionRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
     io.emit('status-update', { status: connectionStatus, qr: null });
 
     const socketOptions = {
@@ -628,9 +628,9 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        const isSessionRegistered = Boolean(state?.creds?.me?.id || state?.creds?.registered === true);
+        const isRegistered = Boolean(state?.creds?.me?.id);
 
-        if (qr && !isSessionRegistered) {
+        if (qr && !isRegistered) {
             console.log('📌 Código QR generado. Listo para escanear.');
             connectionStatus = 'ESPERANDO_QR';
             try {
@@ -645,7 +645,7 @@ async function connectToWhatsApp() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
 
-            if (isLoggedOut || !isSessionRegistered) {
+            if (isLoggedOut || !isRegistered) {
                 console.log('🧹 Sesión no registrada o desvinculada. Limpiando y preparando QR...');
                 if (isLoggedOut) {
                     try {
