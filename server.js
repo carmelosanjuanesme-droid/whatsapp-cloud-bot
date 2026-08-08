@@ -647,21 +647,24 @@ async function connectToWhatsApp() {
 
             if (isLoggedOut || !isSessionRegistered) {
                 console.log('🧹 Sesión no registrada o desvinculada. Limpiando y preparando QR...');
-                try {
-                    fs.rmSync(authDir, { recursive: true, force: true });
-                    if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
-                    const db = await initMongoDB();
-                    if (db) await db.collection('session_auth').deleteMany({});
-                } catch (e) {}
+                if (isLoggedOut) {
+                    try {
+                        fs.rmSync(authDir, { recursive: true, force: true });
+                        if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
+                        const db = await initMongoDB();
+                        if (db) await db.collection('session_auth').deleteMany({});
+                    } catch (e) {}
+                }
                 connectionStatus = 'ESPERANDO_QR';
-                setTimeout(connectToWhatsApp, 2000);
+                qrCodeDataUrl = null;
+                io.emit('status-update', { status: connectionStatus, qr: null });
+                setTimeout(connectToWhatsApp, 1000);
             } else {
                 console.log(`⚠️ Reconectando sesión activa... Código: ${statusCode}`);
                 connectionStatus = 'RECONECTANDO';
+                io.emit('status-update', { status: connectionStatus, qr: null });
                 setTimeout(connectToWhatsApp, 3000);
             }
-
-            io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
         } else if (connection === 'open') {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
             connectionStatus = 'CONECTADO_24_7';
