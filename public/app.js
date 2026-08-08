@@ -276,9 +276,32 @@ document.addEventListener('DOMContentLoaded', () => {
     // Funciones de Renderizado
     function updateStatusUI(status, qrDataUrl) {
         switch (status) {
+            case 'ESPERANDO_QR':
+            case 'INICIALIZANDO':
+                if (qrDataUrl && qrImage) {
+                    if (statusDot) statusDot.className = 'status-dot pulsing';
+                    if (statusBadgeText) statusBadgeText.textContent = 'Esperando QR';
+                    if (kpiStatus) kpiStatus.textContent = 'Esperando QR';
+                    qrImage.src = qrDataUrl;
+                    qrImage.style.display = 'block';
+                    if (spinner) spinner.style.display = 'none';
+                    if (statusMessage) statusMessage.style.display = 'none';
+                } else {
+                    if (statusDot) statusDot.className = 'status-dot pulsing';
+                    if (statusBadgeText) statusBadgeText.textContent = 'Generando QR...';
+                    if (kpiStatus) kpiStatus.textContent = 'Generando QR...';
+                    if (qrImage) qrImage.style.display = 'none';
+                    if (spinner) spinner.style.display = 'block';
+                    if (statusMessage) {
+                        statusMessage.textContent = 'Generando código QR de WhatsApp...';
+                        statusMessage.style.display = 'block';
+                        statusMessage.style.color = '#f59e0b';
+                    }
+                }
+                break;
+
             case 'RESTAURANDO_SESION':
             case 'RECONECTANDO':
-            case 'INICIALIZANDO':
                 if (statusDot) statusDot.className = 'status-dot pulsing';
                 if (statusBadgeText) statusBadgeText.textContent = 'Autenticando Nube';
                 if (kpiStatus) kpiStatus.textContent = 'Autenticando Nube';
@@ -288,18 +311,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     statusMessage.textContent = 'Autenticando sesión guardada en MongoDB Atlas...';
                     statusMessage.style.display = 'block';
                     statusMessage.style.color = '#60a5fa';
-                }
-                break;
-
-            case 'ESPERANDO_QR':
-                if (statusDot) statusDot.className = 'status-dot pulsing';
-                if (statusBadgeText) statusBadgeText.textContent = 'Esperando QR';
-                if (kpiStatus) kpiStatus.textContent = 'Esperando QR';
-                if (qrDataUrl && qrImage) {
-                    qrImage.src = qrDataUrl;
-                    qrImage.style.display = 'block';
-                    if (spinner) spinner.style.display = 'none';
-                    if (statusMessage) statusMessage.style.display = 'none';
                 }
                 break;
 
