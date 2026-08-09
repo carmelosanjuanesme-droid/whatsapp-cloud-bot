@@ -935,9 +935,12 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, async () => {
+server.listen(PORT, () => {
     console.log(`🌐 Servidor Hub WhatsApp (Baileys) escuchando en puerto ${PORT}`);
-    await initMongoDB();
+    initMongoDB().then(() => {
+        console.log('🍃 MongoDB Atlas listo.');
+    }).catch(err => console.error('MongoDB init error:', err));
+
     connectToWhatsApp().catch(err => {
         console.error('❌ Error conectando a WhatsApp Baileys:', err);
     });
