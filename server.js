@@ -231,10 +231,14 @@ async function restaurarSesionDesdeNube() {
     try {
         if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
 
-        const db = await initMongoDB();
+        const db = await Promise.race([
+            initMongoDB(),
+            new Promise(resolve => setTimeout(() => resolve(null), 2500))
+        ]);
+
         if (db) {
             const collection = db.collection('session_auth');
-            const docs = await collection.find({}).toArray();
+            const docs = await collection.find({}).toArray().catch(() => []);
             if (docs && docs.length > 0) {
                 for (const doc of docs) {
                     const fileBuffer = isBase64Str(doc.content) 
@@ -242,28 +246,13 @@ async function restaurarSesionDesdeNube() {
                         : Buffer.from(doc.content, 'utf-8');
                     fs.writeFileSync(path.join(authDir, doc._id), fileBuffer);
                 }
-                console.log(`🍃 Sesión restaurada desde MongoDB Atlas (${docs.length} archivos devueltos a disco sin corrupción).`);
+                console.log(`🍃 Sesión restaurada desde MongoDB Atlas (${docs.length} archivos devueltos a disco).`);
                 return true;
             } else {
                 console.log('ℹ️ MongoDB Atlas session_auth está vacío. Se requiere un nuevo QR.');
                 if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
                 return false;
             }
-        }
-
-        if (fs.existsSync(backupFile)) {
-            const raw = fs.readFileSync(backupFile, 'utf-8');
-            const sessionStore = JSON.parse(raw);
-            let restCount = 0;
-            for (const file in sessionStore) {
-                const fileBuffer = isBase64Str(sessionStore[file])
-                    ? Buffer.from(sessionStore[file], 'base64')
-                    : Buffer.from(sessionStore[file], 'utf-8');
-                fs.writeFileSync(path.join(authDir, file), fileBuffer);
-                restCount++;
-            }
-            console.log(`✅ Sesión restaurada desde respaldo local (${restCount} archivos).`);
-            return true;
         }
     } catch (e) {
         console.error('Error restaurando sesión:', e.message);
