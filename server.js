@@ -63,6 +63,23 @@ let forwardingRules = [
     { tag: '#reporte', target: TARGET_FORWARD_CHAT_NAME, active: true }
 ];
 let cleanupLog = [];
+let uptimeLogs = [];
+
+function registrarLogConexion(evento, detalle = '') {
+    const logItem = {
+        id: Date.now(),
+        fecha: new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }),
+        hora: new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota' }),
+        status: connectionStatus,
+        evento: evento,
+        detalle: detalle
+    };
+    uptimeLogs.unshift(logItem);
+    if (uptimeLogs.length > 200) uptimeLogs.pop();
+    io.emit('uptime-log-new', logItem);
+    persistirItemMongoDB('uptime_logs', logItem);
+    console.log(`📡 [LOG CONEXIÓN] [${logItem.hora}] ${evento} (${connectionStatus})`);
+}
 
 const WEATHER_KEYWORDS = [
     'lluvia', 'lloviendo', 'llovizna', 'tiempo muerto',
@@ -144,13 +161,14 @@ async function initMongoDB() {
 async function cargarDatosDesdeMongoDB() {
     if (!mongoDb) return;
     try {
-        const [photos, hvs, audios, reminders, events, msgs] = await Promise.all([
+        const [photos, hvs, audios, reminders, events, msgs, uptimes] = await Promise.all([
             mongoDb.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
             mongoDb.collection('hvs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
             mongoDb.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
             mongoDb.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
             mongoDb.collection('events').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
-            mongoDb.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray().catch(() => [])
+            mongoDb.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray().catch(() => []),
+            mongoDb.collection('uptime_logs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => [])
         ]);
 
         savedPhotos = photos || [];
@@ -159,8 +177,9 @@ async function cargarDatosDesdeMongoDB() {
         capturedReminders = reminders || [];
         lastEvents = events || [];
         messageHistoryStore = msgs || [];
+        uptimeLogs = uptimes || [];
 
-        console.log(`🍃 Datos persistentes restaurados en paralelo desde MongoDB Atlas: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios.`);
+        console.log(`🍃 Datos persistentes restaurados en paralelo desde MongoDB Atlas: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios, ${uptimeLogs.length} logs de uptime.`);
     } catch (e) {
         console.error('Error restaurando datos desde MongoDB Atlas:', e.message);
     }
@@ -641,6 +660,7 @@ async function connectToWhatsApp() {
             try {
                 qrCodeDataUrl = await qrcode.toDataURL(qr);
                 io.emit('status-update', { status: connectionStatus, qr: qrCodeDataUrl });
+                registrarLogConexion('ESPERANDO_QR', 'Código QR generado y listo para escaneo');
             } catch (err) {
                 console.error('Error convirtiendo QR a DataURL:', err);
             }
@@ -663,6 +683,7 @@ async function connectToWhatsApp() {
                 connectionStatus = 'ESPERANDO_QR';
                 qrCodeDataUrl = null;
                 io.emit('status-update', { status: connectionStatus, qr: null });
+                registrarLogConexion('DESCONECTADO', 'Sesión desvinculada por WhatsApp. Credenciales reseteadas.');
                 setTimeout(connectToWhatsApp, 2000);
             } else {
                 console.log('🔄 Reabriendo socket de WhatsApp tras escaneo/reconexión...');
@@ -670,6 +691,7 @@ async function connectToWhatsApp() {
                     connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
                 }
                 io.emit('status-update', { status: connectionStatus, qr: isRegistered ? null : qrCodeDataUrl });
+                registrarLogConexion('RECONECTANDO', `Ajuste automático de socket en la nube (Código HTTP ${statusCode || 'Socket Switch'})`);
                 setTimeout(connectToWhatsApp, 2000);
             }
         } else if (connection === 'open') {
@@ -678,6 +700,7 @@ async function connectToWhatsApp() {
             qrCodeDataUrl = null;
             await guardarSesionEnNube();
             io.emit('status-update', { status: connectionStatus, qr: null });
+            registrarLogConexion('CONECTADO_24_7', '🟢 Sesión 24/7 activa y respaldada en MongoDB Atlas');
         }
     });
 
@@ -869,8 +892,13 @@ app.get('/api/status', (req, res) => {
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
         cleanupLog: cleanupLog,
+        uptimeLogs: uptimeLogs,
         contactsCount: Object.keys(savedContacts).length
     });
+});
+
+app.get('/api/uptime-logs', (req, res) => {
+    res.json({ success: true, status: connectionStatus, logs: uptimeLogs });
 });
 
 app.post('/api/scan-history-hvs', async (req, res) => {
@@ -920,6 +948,7 @@ io.on('connection', (socket) => {
         reminders: capturedReminders,
         forwardingRules: forwardingRules,
         cleanupLog: cleanupLog,
+        uptimeLogs: uptimeLogs,
         contactsCount: Object.keys(savedContacts).length
     });
 });

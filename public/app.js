@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 2. Escuchar Estado Inicial e Historial Completo
     socket.on('status-update', (data) => {
-        const { status, qr, events, photos, hvs, audios, reminders, forwardingRules, cleanupLog } = data;
+        const { status, qr, events, photos, hvs, audios, reminders, forwardingRules, cleanupLog, uptimeLogs } = data;
 
         updateStatusUI(status, qr);
 
@@ -80,6 +80,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (audios) renderAudios(audios);
         if (reminders) renderReminders(reminders);
         if (cleanupLog) renderCleanupLogs(cleanupLog);
+        if (uptimeLogs) renderUptimeLogs(uptimeLogs);
+    });
+
+    socket.on('uptime-log-new', (logItem) => {
+        fetch('/api/uptime-logs').then(r => r.json()).then(d => {
+            if (d && d.logs) renderUptimeLogs(d.logs);
+        }).catch(() => {});
     });
 
     // Verificación de estado de respaldo mediante HTTP cada 3 segundos
@@ -96,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (data.audios) renderAudios(data.audios);
                 if (data.reminders) renderReminders(data.reminders);
+                if (data.uptimeLogs) renderUptimeLogs(data.uptimeLogs);
             }
         } catch (e) {}
     }
@@ -530,5 +538,38 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             cleanupLogsList.prepend(item);
         });
+    }
+
+    function renderUptimeLogs(logs) {
+        const list = document.getElementById('uptimeLogsList');
+        if (!list) return;
+        if (!logs || logs.length === 0) {
+            list.innerHTML = '<div class="empty-state">No hay registros de conexión aún.</div>';
+            return;
+        }
+        list.innerHTML = logs.map(l => {
+            let badgeColor = '#10b981';
+            let bgStyle = 'rgba(16, 185, 129, 0.15)';
+            if (l.status === 'ESPERANDO_QR') {
+                badgeColor = '#f59e0b';
+                bgStyle = 'rgba(245, 158, 11, 0.15)';
+            } else if (l.status === 'RECONECTANDO') {
+                badgeColor = '#3b82f6';
+                bgStyle = 'rgba(59, 130, 246, 0.15)';
+            } else if (l.status === 'DESCONECTADO') {
+                badgeColor = '#ef4444';
+                bgStyle = 'rgba(239, 68, 68, 0.15)';
+            }
+            return `
+                <div class="event-item" style="border-left: 3px solid ${badgeColor}; padding: 10px 12px; margin-bottom: 8px; background: rgba(255,255,255,0.02); border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.5);">${l.fecha || ''} ${l.hora || ''}</span>
+                        <span style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: ${bgStyle}; color: ${badgeColor};">${l.status || 'OK'}</span>
+                    </div>
+                    <div style="font-size: 12px; color: #e2e8f0; font-weight: 500;">${l.evento || ''}</div>
+                    ${l.detalle ? `<div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px;">${l.detalle}</div>` : ''}
+                </div>
+            `;
+        }).join('');
     }
 });

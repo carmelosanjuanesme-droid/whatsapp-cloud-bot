@@ -231,19 +231,17 @@
                         </button>
                     </section>
 
-                    <!-- LIMPIEZA DE CHATS -->
+                    <!-- MONITOR DE UPTIME Y CONEXIÓN -->
                     <section class="glass-card">
-                        <h2>🧹 Limpieza de Chats (> 6 Meses Inactivos)</h2>
-                        <p class="section-desc">Archiva automáticamente conversaciones sin actividad por más de 180 días:</p>
+                        <div class="section-header">
+                            <h2>📡 Registro de Conexión & Uptime 24/7</h2>
+                            <span class="status-badge" id="uptimeBadge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">🟢 Activo 24/7</span>
+                        </div>
+                        <p class="section-desc">Historial en tiempo real de pings, reconexiones y estado del servidor:</p>
 
-                        <button id="btnRunCleanup" class="btn-primary btn-warning" style="width: 100%; margin-bottom: 16px;">
-                            🚀 Ejecutar Limpieza de Chats Inactivos (>180 días)
-                        </button>
-
-                        <div class="logs-container">
-                            <h3 style="font-size: 14px; margin-bottom: 8px;">Reportes de Limpieza</h3>
-                            <div class="events-list" id="cleanupLogsList">
-                                <div class="empty-state">Sin reportes aún.</div>
+                        <div class="logs-container" style="max-height: 250px; overflow-y: auto;">
+                            <div class="events-list" id="uptimeLogsList">
+                                <div class="empty-state">Iniciando monitor de conexión...</div>
                             </div>
                         </div>
                     </section>
@@ -305,6 +303,6 @@
     </nav>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js?v=6.0"></script>
+    <script src="app.js?v=7.0"></script>
 </body>
 </html>
