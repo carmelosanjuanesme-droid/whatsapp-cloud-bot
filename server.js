@@ -134,13 +134,15 @@ function detectarProfesion(texto) {
 let mongoClient = null;
 let mongoDb = null;
 
-async function initMongoDB() {
+async function initMongoDB(retries = 5) {
     if (!MONGODB_URI) {
         console.log('⚠️ MONGODB_URI no configurado.');
         return null;
     }
-    try {
-        if (!mongoClient) {
+    if (mongoDb) return mongoDb;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
             let uri = MONGODB_URI.trim();
             if (!uri.includes('tlsAllowInvalidCertificates')) {
                 uri += (uri.includes('?') ? '&' : '?') + 'tls=true&tlsAllowInvalidCertificates=true';
@@ -152,17 +154,20 @@ async function initMongoDB() {
             });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
-            console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Activa)');
+            console.log(`🍃 Conectado con éxito a MongoDB Atlas en intento ${attempt} (Persistencia Activa)`);
             
             cargarDatosDesdeMongoDB().catch(() => {});
+            return mongoDb;
+        } catch (e) {
+            console.error(`⚠️ Error conectando a MongoDB Atlas (Intento ${attempt}/${retries}):`, e.message);
+            mongoClient = null;
+            mongoDb = null;
+            if (attempt < retries) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
         }
-        return mongoDb;
-    } catch (e) {
-        console.error('⚠️ Error conectando a MongoDB Atlas:', e.message);
-        mongoClient = null;
-        mongoDb = null;
-        return null;
     }
+    return null;
 }
 
 async function cargarDatosDesdeMongoDB() {
@@ -447,7 +452,9 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
     const isMariaChat = groupName.toLowerCase().includes('maria') || 
                         senderName.toLowerCase().includes('maria') ||
                         groupName.toLowerCase().includes('gesti') ||
-                        senderName.toLowerCase().includes('gesti');
+                        senderName.toLowerCase().includes('gesti') ||
+                        groupName.toLowerCase().includes('ingelec') ||
+                        senderName.toLowerCase().includes('ingelec');
 
     if (docMsg && (isMariaChat || isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
         try {
@@ -615,7 +622,7 @@ async function connectToWhatsApp() {
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
         },
         browser: Browsers.macOS('Desktop'),
-        syncFullHistory: false
+        syncFullHistory: true
     };
 
     sock = makeWASocket(socketOptions);
