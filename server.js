@@ -920,6 +920,20 @@ app.get('/api/generate-summary', (req, res) => {
     res.json({ success: true, resumen });
 });
 
+app.post('/api/test-ping', (req, res) => {
+    const mem = process.memoryUsage();
+    res.json({
+        success: true,
+        timestamp: new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota' }),
+        status: connectionStatus,
+        mongoAtlas: mongoDb ? '🟢 Conectado' : '⚠️ Desconectado',
+        ramUsageMB: (mem.heapUsed / 1024 / 1024).toFixed(1) + ' MB',
+        contactsCount: Object.keys(savedContacts).length,
+        photosCount: savedPhotos.length,
+        hvsCount: savedHvs.length
+    });
+});
+
 app.post('/api/cleanup-chats', async (req, res) => {
     try {
         const dias = req.body.dias || 180;

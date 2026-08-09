@@ -239,11 +239,16 @@
                         </div>
                         <p class="section-desc">Historial en tiempo real de pings, reconexiones y estado del servidor:</p>
 
-                        <div class="logs-container" style="max-height: 250px; overflow-y: auto;">
+                        <div class="logs-container" style="max-height: 200px; overflow-y: auto;">
                             <div class="events-list" id="uptimeLogsList">
                                 <div class="empty-state">Iniciando monitor de conexión...</div>
                             </div>
                         </div>
+
+                        <button id="btnTestPing" class="btn-primary" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; margin-top: 12px; width: 100%;">
+                            ⚡ Probar Diagnóstico de Conexión en Vivo
+                        </button>
+                        <div id="pingTestOutput" style="display: none; margin-top: 10px; padding: 10px; border-radius: 6px; background: rgba(0,0,0,0.3); font-size: 12px; color: #a7f3d0; border: 1px solid rgba(16,185,129,0.2);"></div>
                     </section>
                 </div>
 
@@ -303,6 +308,6 @@
     </nav>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js?v=7.0"></script>
+    <script src="app.js?v=8.0"></script>
 </body>
 </html>

@@ -149,6 +149,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const btnTestPing = document.getElementById('btnTestPing');
+    const pingTestOutput = document.getElementById('pingTestOutput');
+    if (btnTestPing && pingTestOutput) {
+        btnTestPing.addEventListener('click', async () => {
+            btnTestPing.disabled = true;
+            btnTestPing.textContent = '⏳ Ejecutando diagnóstico de red...';
+            pingTestOutput.style.display = 'block';
+            pingTestOutput.innerHTML = 'Probando estado de servidores y base de datos...';
+            try {
+                const res = await fetch('/api/test-ping', { method: 'POST' });
+                const d = await res.json();
+                if (d.success) {
+                    pingTestOutput.innerHTML = `
+                        <strong>✅ Diagnóstico Exitoso (${d.timestamp}):</strong><br>
+                        • Estado WhatsApp: <strong>${d.status}</strong><br>
+                        • Base de Datos MongoDB: <strong>${d.mongoAtlas}</strong><br>
+                        • Uso de RAM en Nube: <strong>${d.ramUsageMB}</strong><br>
+                        • Contactos / Fotos HD / HVs: <strong>${d.contactsCount} chats / ${d.photosCount} fotos / ${d.hvsCount} HVs</strong>
+                    `;
+                } else {
+                    pingTestOutput.innerHTML = `❌ Error en prueba: ${d.error}`;
+                }
+            } catch (e) {
+                pingTestOutput.innerHTML = `❌ Error de red: ${e.message}`;
+            } finally {
+                btnTestPing.disabled = false;
+                btnTestPing.textContent = '⚡ Probar Diagnóstico de Conexión en Vivo';
+            }
+        });
+    }
+
     // 🔍 BUSCADOR UNIVERSAL DE CONTENIDOS EN TIEMPO REAL
     const globalSearchInput = document.getElementById('globalSearchInput');
     const btnGlobalSearch = document.getElementById('btnGlobalSearch');
