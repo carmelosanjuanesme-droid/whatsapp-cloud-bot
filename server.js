@@ -123,14 +123,14 @@ async function initMongoDB() {
             }
             mongoClient = new MongoClient(uri, {
                 family: 4,
-                serverSelectionTimeoutMS: 10000,
-                connectTimeoutMS: 15000
+                serverSelectionTimeoutMS: 8000,
+                connectTimeoutMS: 10000
             });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
             console.log('🍃 Conectado con éxito a la Base de Datos MongoDB Atlas (Persistencia Activa)');
             
-            await cargarDatosDesdeMongoDB();
+            cargarDatosDesdeMongoDB().catch(() => {});
         }
         return mongoDb;
     } catch (e) {
@@ -144,13 +144,23 @@ async function initMongoDB() {
 async function cargarDatosDesdeMongoDB() {
     if (!mongoDb) return;
     try {
-        savedPhotos = await mongoDb.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray() || [];
-        savedHvs = await mongoDb.collection('hvs').find({}).sort({ id: -1 }).limit(200).toArray() || [];
-        savedAudios = await mongoDb.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray() || [];
-        capturedReminders = await mongoDb.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray() || [];
-        lastEvents = await mongoDb.collection('events').find({}).sort({ id: -1 }).limit(100).toArray() || [];
-        messageHistoryStore = await mongoDb.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray() || [];
-        console.log(`🍃 Datos persistentes restaurados desde MongoDB Atlas: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios, ${capturedReminders.length} citas.`);
+        const [photos, hvs, audios, reminders, events, msgs] = await Promise.all([
+            mongoDb.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+            mongoDb.collection('hvs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
+            mongoDb.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+            mongoDb.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+            mongoDb.collection('events').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+            mongoDb.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray().catch(() => [])
+        ]);
+
+        savedPhotos = photos || [];
+        savedHvs = hvs || [];
+        savedAudios = audios || [];
+        capturedReminders = reminders || [];
+        lastEvents = events || [];
+        messageHistoryStore = msgs || [];
+
+        console.log(`🍃 Datos persistentes restaurados en paralelo desde MongoDB Atlas: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios.`);
     } catch (e) {
         console.error('Error restaurando datos desde MongoDB Atlas:', e.message);
     }
