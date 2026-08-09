@@ -15,6 +15,10 @@ const qrcode = require('qrcode');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const dns = require('dns');
+try {
+    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (e) {}
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
 
