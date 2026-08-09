@@ -149,6 +149,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const btnExtractMariaHvs = document.getElementById('btnExtractMariaHvs');
+    if (btnExtractMariaHvs) {
+        btnExtractMariaHvs.addEventListener('click', async () => {
+            btnExtractMariaHvs.disabled = true;
+            btnExtractMariaHvs.textContent = '⏳ Extrayendo HVs de María Gestión Humana...';
+            try {
+                const res = await fetch('/api/extract-chat-hvs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chatName: 'maria' })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(`✅ Proceso completado para ${d.chatBuscado}:\n• Hojas de Vida detectadas: ${d.totalHvsDetectadas}\n• Archivos subidos a Google Drive: ${d.totalSubidasDrive}\nCarpeta destino en Drive: Hojas_de_Vida_Maria_Gestion_Humana`);
+                } else {
+                    alert(`⚠️ Error extrayendo HVs: ${d.error}`);
+                }
+            } catch (e) {
+                alert(`Error de red: ${e.message}`);
+            } finally {
+                btnExtractMariaHvs.disabled = false;
+                btnExtractMariaHvs.textContent = '👩‍💼 Extraer HVs de "María Gestión Humana" ➔ Drive';
+            }
+        });
+    }
+
     const btnTestPing = document.getElementById('btnTestPing');
     const pingTestOutput = document.getElementById('pingTestOutput');
     if (btnTestPing && pingTestOutput) {

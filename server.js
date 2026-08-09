@@ -447,8 +447,12 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
     const ext = docName ? path.extname(docName).toLowerCase() : '';
     const isDocExtension = ext === '.pdf' || ext === '.doc' || ext === '.docx';
     const isHVKeyword = HV_KEYWORDS.some(kw => combinedDocText.includes(kw.trim()));
+    const isMariaChat = groupName.toLowerCase().includes('maria') || 
+                        senderName.toLowerCase().includes('maria') ||
+                        groupName.toLowerCase().includes('gesti') ||
+                        senderName.toLowerCase().includes('gesti');
 
-    if (docMsg && (isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
+    if (docMsg && (isMariaChat || isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
         try {
             const buffer = await downloadMediaMessage(msg, 'buffer', {});
             if (buffer) {
@@ -470,10 +474,10 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
                         hora: timeStr,
                         grupo: groupName,
                         remitente: senderName,
-                        profesion: profesion,
+                        profesion: isMariaChat ? `👩‍💼 María Gestión Humana (${profesion})` : profesion,
                         nombreArchivo: filename,
                         nombreOriginal: docName || 'Hoja_de_Vida.pdf',
-                        descripcion: textMessage || 'Hoja de vida recibida por WhatsApp',
+                        descripcion: textMessage || `Hoja de Vida procesada de ${senderName}`,
                         url: `/downloads/hojas_de_vida/${filename}`,
                         tamano: (buffer.length / 1024).toFixed(1) + ' KB'
                     };
@@ -483,9 +487,10 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
 
                     io.emit('new-hv', hvData);
                     persistirItemMongoDB('hvs', hvData);
-                    console.log(`📄 Hoja de Vida capturada con éxito (${profesion}): ${filename}`);
+                    console.log(`📄 Hoja de Vida capturada (${hvData.profesion}): ${filename}`);
 
-                    respaldarEnGoogleDrive(filePath, 'Hojas_de_Vida', filename);
+                    const folderDrive = isMariaChat ? 'Hojas_de_Vida_Maria_Gestion_Humana' : 'Hojas_de_Vida';
+                    respaldarEnGoogleDrive(filePath, folderDrive, filename);
                 }
             }
         } catch (err) {
@@ -932,6 +937,38 @@ app.post('/api/test-ping', (req, res) => {
         photosCount: savedPhotos.length,
         hvsCount: savedHvs.length
     });
+});
+
+app.post('/api/extract-chat-hvs', async (req, res) => {
+    try {
+        const targetChatName = req.body.chatName || 'maria';
+        const query = targetChatName.toLowerCase();
+        console.log(`🔎 Ejecutando extracción especial de Hojas de Vida para chat: "${targetChatName}"...`);
+
+        const matchingHvs = savedHvs.filter(h => 
+            (h.grupo && h.grupo.toLowerCase().includes(query)) || 
+            (h.remitente && h.remitente.toLowerCase().includes(query))
+        );
+
+        let subidasCount = 0;
+        for (const hv of matchingHvs) {
+            const localPath = path.join(hvsDir, hv.nombreArchivo);
+            if (fs.existsSync(localPath)) {
+                await respaldarEnGoogleDrive(localPath, 'Hojas_de_Vida_Maria_Gestion_Humana', hv.nombreArchivo);
+                subidasCount++;
+            }
+        }
+
+        res.json({
+            success: true,
+            chatBuscado: 'María Gestión Humana',
+            totalHvsDetectadas: matchingHvs.length,
+            totalSubidasDrive: subidasCount,
+            hvs: matchingHvs
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 app.post('/api/cleanup-chats', async (req, res) => {
