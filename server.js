@@ -457,16 +457,24 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
                         groupName.toLowerCase().includes('ingelec') ||
                         senderName.toLowerCase().includes('ingelec');
 
-    if (docMsg && (isMariaChat || isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
+    if ((docMsg || textMessage) && (isMariaChat || isHVKeyword || isDocExtension || docName.toLowerCase().includes('hv') || docName.toLowerCase().includes('cv'))) {
         try {
-            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            const isTextOnlyApplication = !docMsg && isMariaChat && (combinedDocText.includes('hoja de vida') || combinedDocText.includes('postular') || combinedDocText.includes('vacante'));
+
+            let buffer = null;
+            if (docMsg) {
+                buffer = await downloadMediaMessage(msg, 'buffer', {});
+            } else if (isTextOnlyApplication) {
+                buffer = Buffer.from(`CANDIDATO: ${senderName}\nFECHA: ${dateStr} ${timeStr}\nMENSAJE DE POSTULACIÓN:\n${textMessage}`, 'utf-8');
+            }
+
             if (buffer) {
                 const safeGroup = groupName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
                 const safeSender = senderName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 15);
-                const cleanDoc = (docName || 'Hoja_de_Vida').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
+                const cleanDoc = (docName || 'Postulacion_Candidato').replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 25);
                 const profesion = detectarProfesion(combinedDocText);
 
-                const fileExt = ext || '.pdf';
+                const fileExt = docMsg ? (ext || '.pdf') : '.txt';
                 const filename = `HV_${dateStr}_${safeSender}_${safeGroup}_${cleanDoc}${fileExt.startsWith('.') ? fileExt : '.' + fileExt}`;
                 const filePath = path.join(hvsDir, filename);
 
@@ -481,7 +489,7 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
                         remitente: senderName,
                         profesion: isMariaChat ? `👩‍💼 María Gestión Humana (${profesion})` : profesion,
                         nombreArchivo: filename,
-                        nombreOriginal: docName || 'Hoja_de_Vida.pdf',
+                        nombreOriginal: docName || 'Postulacion_Candidato.txt',
                         descripcion: textMessage || `Hoja de Vida procesada de ${senderName}`,
                         url: `/downloads/hojas_de_vida/${filename}`,
                         tamano: (buffer.length / 1024).toFixed(1) + ' KB'
