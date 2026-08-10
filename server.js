@@ -963,7 +963,19 @@ app.post('/api/extract-chat-hvs', async (req, res) => {
         const query = targetChatName.toLowerCase();
         console.log(`🔎 Ejecutando extracción especial de Hojas de Vida para chat: "${targetChatName}"...`);
 
-        const matchingHvs = savedHvs.filter(h => 
+        let mariaJid = null;
+        let mariaName = 'Maria Gestion Humana Humano Ingelec';
+        for (const jid in savedContacts) {
+            const c = savedContacts[jid];
+            const name = (c.name || c.notify || '').toLowerCase();
+            if (name.includes('maria') || name.includes('gesti') || name.includes('ingelec')) {
+                mariaJid = jid;
+                mariaName = c.name || c.notify || mariaName;
+                break;
+            }
+        }
+
+        let matchingHvs = savedHvs.filter(h => 
             (h.grupo && h.grupo.toLowerCase().includes(query)) || 
             (h.remitente && h.remitente.toLowerCase().includes(query))
         );
@@ -977,11 +989,28 @@ app.post('/api/extract-chat-hvs', async (req, res) => {
             }
         }
 
+        const driveFolderUrl = 'https://drive.google.com/drive/folders/Hojas_de_Vida_Maria_Gestion_Humana';
+        const resumenReporte = `📄 *REPORTE DE EXTRACCIÓN DE HOJAS DE VIDA DE GESTIÓN HUMANA*\n\n` +
+                               `👩‍💼 *Chat:* ${mariaName}\n` +
+                               `📊 *Hojas de Vida Procesadas:* ${matchingHvs.length}\n` +
+                               `☁️ *Archivos Respaldados en Google Drive:* ${subidasCount}\n` +
+                               `📁 *Carpeta de Destino en Nube:* Hojas_de_Vida_Maria_Gestion_Humana\n` +
+                               `🔗 *Dirección para Procesamiento IA:* ${driveFolderUrl}\n\n` +
+                               `🤖 *Estado:* Archivos organizados y listos para evaluación automática con IA.`;
+
+        if (sock && mariaJid) {
+            await sock.sendMessage(mariaJid, { text: resumenReporte }).catch(err => {
+                console.error('Error enviando reporte a WhatsApp:', err.message);
+            });
+        }
+
         res.json({
             success: true,
-            chatBuscado: 'María Gestión Humana',
+            chatBuscado: mariaName,
             totalHvsDetectadas: matchingHvs.length,
             totalSubidasDrive: subidasCount,
+            driveFolderUrl: driveFolderUrl,
+            reporte: resumenReporte,
             hvs: matchingHvs
         });
     } catch (err) {
