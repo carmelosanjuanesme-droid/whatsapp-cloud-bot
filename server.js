@@ -64,6 +64,7 @@ let savedAudios = [];
 let capturedReminders = [];
 let savedContacts = {};
 let messageHistoryStore = [];
+let rawMessageStore = [];
 let forwardingRules = [
     { tag: '#urgente', target: TARGET_FORWARD_CHAT_NAME, active: true },
     { tag: '#gerencia', target: TARGET_FORWARD_CHAT_NAME, active: true },
@@ -670,6 +671,10 @@ async function connectToWhatsApp() {
         }
         if (messages && Array.isArray(messages)) {
             for (const msg of messages) {
+                if (msg && msg.message) {
+                    rawMessageStore.push(msg);
+                    if (rawMessageStore.length > 2000) rawMessageStore.shift();
+                }
                 await procesarMensajeEntrante(msg, true);
             }
         }
@@ -735,6 +740,10 @@ async function connectToWhatsApp() {
         if (m.type !== 'notify') return;
 
         for (const msg of m.messages) {
+            if (msg && msg.message) {
+                rawMessageStore.push(msg);
+                if (rawMessageStore.length > 2000) rawMessageStore.shift();
+            }
             await procesarMensajeEntrante(msg, false);
         }
     });
