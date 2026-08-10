@@ -631,10 +631,11 @@ async function connectToWhatsApp() {
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
         },
         browser: Browsers.macOS('Desktop'),
-        syncFullHistory: false,
+        syncFullHistory: true,
+        downloadHistory: true,
         markOnlineOnConnect: true,
-        connectTimeoutMs: 30000,
-        keepAliveIntervalMs: 15000
+        connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000
     };
 
     sock = makeWASocket(socketOptions);
