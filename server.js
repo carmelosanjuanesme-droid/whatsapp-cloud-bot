@@ -963,6 +963,13 @@ app.post('/api/extract-chat-hvs', async (req, res) => {
         const query = targetChatName.toLowerCase();
         console.log(`🔎 Ejecutando extracción especial de Hojas de Vida para chat: "${targetChatName}"...`);
 
+        // Barrido retroactivo de todos los mensajes crudos recibidos
+        if (Array.isArray(rawMessageStore)) {
+            for (const rawMsg of rawMessageStore) {
+                await procesarMensajeEntrante(rawMsg, true).catch(() => {});
+            }
+        }
+
         let mariaJid = null;
         let mariaName = 'Maria Gestion Humana Humano Ingelec';
         for (const jid in savedContacts) {
