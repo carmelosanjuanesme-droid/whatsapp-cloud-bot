@@ -1103,14 +1103,16 @@ app.get('/api/generate-summary', (req, res) => {
     res.json({ success: true, resumen });
 });
 
-app.post('/api/test-ping', (req, res) => {
+app.all(['/api/ping-test', '/api/test-ping'], async (req, res) => {
     const mem = process.memoryUsage();
+    const isMongoOk = Boolean(mongoDb);
     res.json({
         success: true,
         timestamp: new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota' }),
         status: connectionStatus,
-        mongoAtlas: mongoDb ? '🟢 Conectado' : '⚠️ Desconectado',
-        ramUsageMB: (mem.heapUsed / 1024 / 1024).toFixed(1) + ' MB',
+        mongoDbConnected: isMongoOk,
+        mongoAtlas: isMongoOk ? '🟢 Conectado' : '⚠️ Desconectado',
+        memoryUsageMB: (mem.heapUsed / 1024 / 1024).toFixed(1),
         contactsCount: Object.keys(savedContacts).length,
         photosCount: savedPhotos.length,
         hvsCount: savedHvs.length
