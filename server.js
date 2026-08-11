@@ -145,13 +145,9 @@ async function initMongoDB(retries = 5) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             let uri = MONGODB_URI.trim();
-            if (!uri.includes('tlsAllowInvalidCertificates')) {
-                uri += (uri.includes('?') ? '&' : '?') + 'tls=true&tlsAllowInvalidCertificates=true';
-            }
             mongoClient = new MongoClient(uri, {
-                family: 4,
-                serverSelectionTimeoutMS: 8000,
-                connectTimeoutMS: 10000
+                serverSelectionTimeoutMS: 15000,
+                connectTimeoutMS: 15000
             });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
