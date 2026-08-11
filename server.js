@@ -820,12 +820,12 @@ async function connectToWhatsApp() {
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+            const isExplicitLogout = statusCode === DisconnectReason.loggedOut;
 
-            console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. LoggedOut: ${isLoggedOut}. Registered: ${isRegistered}`);
+            console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. LoggedOut: ${isExplicitLogout}. Registered: ${isRegistered}`);
 
-            if (isLoggedOut) {
-                console.log('🧹 Sesión desvinculada por WhatsApp. Limpiando credenciales en MongoDB Atlas...');
+            if (isExplicitLogout && !isRegistered) {
+                console.log('🧹 Sesión desvinculada explícitamente por WhatsApp. Limpiando credenciales en MongoDB Atlas...');
                 try {
                     fs.rmSync(authDir, { recursive: true, force: true });
                     if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
@@ -838,15 +838,15 @@ async function connectToWhatsApp() {
                 qrCodeDataUrl = null;
                 io.emit('status-update', { status: connectionStatus, qr: null });
                 registrarLogConexion('DESCONECTADO', 'Sesión desvinculada por WhatsApp. Credenciales reseteadas.');
-                setTimeout(connectToWhatsApp, 2000);
+                setTimeout(connectToWhatsApp, 3000);
             } else {
-                console.log('🔄 Reabriendo socket de WhatsApp tras escaneo/reconexión...');
+                console.log('🔄 Reabriendo socket de WhatsApp automáticamente (Preservando MongoDB Atlas)...');
                 if (connectionStatus !== 'CONECTADO_24_7') {
                     connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
                 }
                 io.emit('status-update', { status: connectionStatus, qr: isRegistered ? null : qrCodeDataUrl });
-                registrarLogConexion('RECONECTANDO', `Ajuste automático de socket en la nube (Código HTTP ${statusCode || 'Socket Switch'})`);
-                setTimeout(connectToWhatsApp, 2000);
+                registrarLogConexion('RECONECTANDO', `Reconexión automática de socket (Código HTTP ${statusCode || 'Socket Switch'})`);
+                setTimeout(connectToWhatsApp, 3000);
             }
         } else if (connection === 'open') {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
