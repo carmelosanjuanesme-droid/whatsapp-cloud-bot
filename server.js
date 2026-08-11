@@ -498,7 +498,7 @@ REGLAS DE RESPUESTA PARA WHATSAPP:
         console.log(`📤 Respuesta de comando IA enviada a WhatsApp chat: ${groupName}`);
     }
 
-    return true;
+    return respuestaIA;
 }
 
 // 📩 PROCESADOR UNIVERSAL DE MENSAJES (VIVOS E HISTÓRICOS)
