@@ -32,7 +32,12 @@
                 <nav class="sidebar-menu">
                     <div class="menu-label">Módulos Principales</div>
                     
-                    <button class="nav-item active" data-hub="hub-talento">
+                    <button class="nav-item active" data-hub="hub-comandos-ia">
+                        <span class="nav-icon">🤖</span>
+                        <span>Motor de Comandos IA</span>
+                    </button>
+
+                    <button class="nav-item" data-hub="hub-talento">
                         <span class="nav-icon">👥</span>
                         <span>Talento & HVs</span>
                     </button>
@@ -120,8 +125,56 @@
                 </div>
             </div>
 
+            <!-- HUB 0: MOTOR DE COMANDOS IA EN TIEMPO REAL -->
+            <div class="hub-pane active" id="hub-comandos-ia">
+                <section class="glass-card">
+                    <div class="section-header">
+                        <h2>🤖 Terminal de Comandos Agénticos de IA en WhatsApp</h2>
+                        <span class="status-badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">🟢 Motor Activo</span>
+                    </div>
+                    <p class="section-desc">Escribe una orden en lenguaje natural para probar cómo la IA ejecuta acciones y analiza los chats en tiempo real:</p>
+
+                    <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <input type="text" id="aiCommandInput" class="glass-input" placeholder="ej: bot: analiza las Hojas de Vida del chat de María y resume los mejores candidatos..." style="flex: 2; min-width: 300px;">
+                        <input type="text" id="aiChatTargetInput" class="glass-input" placeholder="Chat objetivo (opcional, ej: Maria)" style="flex: 1; min-width: 180px;">
+                        <button id="btnExecuteAiCommand" class="btn-primary" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); white-space: nowrap;">
+                            ⚡ Ejecutar Orden de IA
+                        </button>
+                    </div>
+
+                    <div id="aiCommandOutputContainer" style="display: none; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.4); margin-bottom: 24px;">
+                        <div style="font-size: 12px; color: #818cf8; font-weight: 600; margin-bottom: 8px;">🤖 RESPUESTA DE LA IA EN TIEMPO REAL:</div>
+                        <pre id="aiCommandOutputText" style="white-space: pre-wrap; font-family: 'Inter', sans-serif; color: #f1f5f9; font-size: 14px; line-height: 1.6;"></pre>
+                    </div>
+
+                    <div class="section-header" style="margin-top: 10px;">
+                        <h3>💡 Comandos Rápidos Recomendados</h3>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px;">
+                        <div class="kpi-card" style="cursor: pointer;" onclick="document.getElementById('aiCommandInput').value = 'bot: analiza las Hojas de Vida del chat de María y dime quiénes son los mejores candidatos';">
+                            <div>
+                                <div style="font-weight: 600; color: #60a5fa;">📄 Analizar HVs de María</div>
+                                <div style="font-size: 12px; color: #94a3b8;">Evalúa vacantes y clasifica candidatos</div>
+                            </div>
+                        </div>
+                        <div class="kpi-card" style="cursor: pointer;" onclick="document.getElementById('aiCommandInput').value = 'bot: resume las notas de voz recibidas hoy y dime las tareas pendientes';">
+                            <div>
+                                <div style="font-weight: 600; color: #c084fc;">🎙️ Resumir Notas de Voz</div>
+                                <div style="font-size: 12px; color: #94a3b8;">Extrae compromisos de los audios</div>
+                            </div>
+                        </div>
+                        <div class="kpi-card" style="cursor: pointer;" onclick="document.getElementById('aiCommandInput').value = 'bot: genera un informe completo y dame el enlace de Google Drive';">
+                            <div>
+                                <div style="font-weight: 600; color: #34d399;">☁️ Reporte & Google Drive</div>
+                                <div style="font-size: 12px; color: #94a3b8;">Sincroniza y respalda en nube</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
             <!-- HUB 1: TALENTO & HOJAS DE VIDA (FULL SCREEN) -->
-            <div class="hub-pane active" id="hub-talento">
+            <div class="hub-pane" id="hub-talento">
                 <section class="glass-card">
                     <div class="section-header">
                         <h2>👥 Reservorio Especial de Hojas de Vida (CVs)</h2>

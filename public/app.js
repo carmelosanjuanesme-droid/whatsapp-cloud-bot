@@ -629,4 +629,54 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }).join('');
     }
+
+    // 🤖 EJECUTAR COMANDOS AGÉNTICOS DE IA DESDE LA WEB
+    const btnExecuteAiCommand = document.getElementById('btnExecuteAiCommand');
+    const aiCommandInput = document.getElementById('aiCommandInput');
+    const aiChatTargetInput = document.getElementById('aiChatTargetInput');
+    const aiCommandOutputContainer = document.getElementById('aiCommandOutputContainer');
+    const aiCommandOutputText = document.getElementById('aiCommandOutputText');
+
+    if (btnExecuteAiCommand && aiCommandInput) {
+        btnExecuteAiCommand.addEventListener('click', async () => {
+            const command = aiCommandInput.value.trim();
+            const chatTarget = aiChatTargetInput ? aiChatTargetInput.value.trim() : '';
+
+            if (!command) {
+                alert('Por favor escribe una orden o comando para la IA');
+                return;
+            }
+
+            btnExecuteAiCommand.disabled = true;
+            btnExecuteAiCommand.innerHTML = '⏳ Procesando con IA...';
+            if (aiCommandOutputContainer) aiCommandOutputContainer.style.display = 'block';
+            if (aiCommandOutputText) aiCommandOutputText.textContent = '🧠 Analizando chats, Hojas de Vida y contenidos con Inteligencia Artificial... Por favor espera...';
+
+            try {
+                const res = await fetch('/api/execute-ai-command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command, chatName: chatTarget })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    if (aiCommandOutputText) {
+                        aiCommandOutputText.textContent = data.procesado || 'Comando ejecutado con éxito.';
+                    }
+                } else {
+                    if (aiCommandOutputText) {
+                        aiCommandOutputText.textContent = '❌ Error ejecutando comando: ' + (data.error || 'Desconocido');
+                    }
+                }
+            } catch (err) {
+                if (aiCommandOutputText) {
+                    aiCommandOutputText.textContent = '❌ Error de conexión: ' + err.message;
+                }
+            } finally {
+                btnExecuteAiCommand.disabled = false;
+                btnExecuteAiCommand.innerHTML = '⚡ Ejecutar Orden de IA';
+            }
+        });
+    }
 });

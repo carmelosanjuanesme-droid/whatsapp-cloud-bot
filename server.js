@@ -992,6 +992,35 @@ app.get('/api/search-content', async (req, res) => {
     }
 });
 
+app.post('/api/execute-ai-command', async (req, res) => {
+    try {
+        const { command, chatName } = req.body;
+        if (!command || typeof command !== 'string') {
+            return res.status(400).json({ success: false, error: 'Comando requerido' });
+        }
+
+        let targetJid = null;
+        let targetGroup = chatName || 'Web Dashboard';
+        if (chatName) {
+            const query = chatName.toLowerCase();
+            for (const jid in savedContacts) {
+                const c = savedContacts[jid];
+                const name = (c.name || c.notify || '').toLowerCase();
+                if (name.includes(query)) {
+                    targetJid = jid;
+                    targetGroup = c.name || c.notify || targetGroup;
+                    break;
+                }
+            }
+        }
+
+        const procesado = await procesarComandoIAEntrante(targetJid, command, 'Web Admin', targetGroup, null);
+        res.json({ success: true, comando: command, chat: targetGroup, procesado });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.post('/api/send-message', async (req, res) => {
     try {
         const { targetName, phone, message } = req.body;
