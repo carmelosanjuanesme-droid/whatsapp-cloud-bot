@@ -1105,6 +1105,7 @@ app.get('/api/generate-summary', (req, res) => {
 
 app.all(['/api/ping-test', '/api/test-ping'], async (req, res) => {
     const mem = process.memoryUsage();
+    if (!mongoDb) await initMongoDB().catch(() => {});
     const isMongoOk = Boolean(mongoDb);
     res.json({
         success: true,
