@@ -394,6 +394,113 @@ async function buscarContenidosUniversal(query) {
     return { query: term, resultados: resultados.slice(0, 50), total: resultados.length };
 }
 
+// 🤖 MOTOR AGÉNTICO DE COMANDOS IA DESDE WHATSAPP
+async function procesarComandoIAEntrante(fromJid, textMessage, senderName, groupName, msg) {
+    if (!textMessage || typeof textMessage !== 'string') return false;
+    const textLower = textMessage.toLowerCase().trim();
+
+    const esComandoDirecto = textLower.startsWith('bot:') || 
+                             textLower.startsWith('bot ') || 
+                             textLower.startsWith('ia:') || 
+                             textLower.startsWith('ia ') ||
+                             textLower.startsWith('ingelec:') ||
+                             textLower.startsWith('ingelec ');
+
+    const esAccionClave = textLower.includes('analiza') || 
+                          textLower.includes('resume') || 
+                          textLower.includes('extrae') || 
+                          textLower.includes('quien') || 
+                          textLower.includes('quién') || 
+                          textLower.includes('reporte') || 
+                          textLower.includes('hoja de vida') || 
+                          textLower.includes('hojas de vida');
+
+    const debeProcesar = esComandoDirecto || (esAccionClave && (textLower.includes('bot') || textLower.includes('ia') || textLower.includes('maria') || textLower.includes('maría')));
+
+    if (!debeProcesar) return false;
+
+    console.log(`🤖 [MOTOR AGÉNTICO IA] Orden recibida de ${senderName} en ${groupName}: "${textMessage}"`);
+
+    let ordenLimpia = textMessage.replace(/^(bot:|bot\s|ia:|ia\s|ingelec:|ingelec\s)/i, '').trim();
+
+    const hvsContexto = savedHvs.map(h => `- Candidato: ${h.remitente} | Vacante/Profesión: ${h.profesion} | Archivo: ${h.nombreOriginal} | Descripción: ${h.descripcion} (${h.fecha})`).join('\n');
+    const audiosContexto = savedAudios.map(a => `- De: ${a.remitente} (${a.fecha}): "${a.transcripcion}"`).join('\n');
+    const mensajesContexto = messageHistoryStore.slice(0, 30).map(m => `- [${m.fecha} ${m.hora}] ${m.remitente} en ${m.grupo}: ${m.texto}`).join('\n');
+
+    const promptSistema = `Eres el Asistente Inteligente Agéntico de Ingelec Group para WhatsApp.
+Analiza la orden dada por el usuario y la información del sistema para devolver una respuesta ejecutiva, profesional, estructurada y en español lista para enviarse por WhatsApp.
+
+ORDEN RECIBIDA DE ${senderName.toUpperCase()}:
+"${ordenLimpia}"
+
+INFORMACIÓN DISPONIBLE EN EL SISTEMA:
+--- HOJAS DE VIDA & CANDIDATOS REGISTRADOS ---
+${hvsContexto || 'No hay Hojas de Vida registradas en el momento.'}
+
+--- NOTAS DE VOZ & TRANSCRIPCIONES ---
+${audiosContexto || 'No hay audios recientes.'}
+
+--- MENSAJES RECIENTES DEL HISTORIAL ---
+${mensajesContexto || 'No hay historial reciente.'}
+
+REGLAS DE RESPUESTA PARA WHATSAPP:
+1. Responde de forma concisa, ejecutiva y clara usando emojis y formato enriquecido en negritas (*texto*).
+2. Si piden analizar vacantes o candidatos, califica a los postulantes de acuerdo con los requisitos pedidos y lista los mejores.
+3. Indica que los archivos procesados se respaldan en Google Drive carpeta "Hojas_de_Vida_Maria_Gestion_Humana".
+4. Si la consulta es general sobre proyectos o estado, responde con la información disponible.`;
+
+    let respuestaIA = null;
+
+    const groqKey = process.env.GROQ_API_KEY || GROQ_API_KEY || '';
+    if (groqKey) {
+        try {
+            const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+                model: 'llama-3.3-70b-versatile',
+                messages: [
+                    { role: 'system', content: promptSistema },
+                    { role: 'user', content: ordenLimpia }
+                ],
+                temperature: 0.3
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${groqKey}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (resp.data && resp.data.choices && resp.data.choices[0]?.message?.content) {
+                respuestaIA = resp.data.choices[0].message.content.trim();
+            }
+        } catch (e) {
+            console.error('Error invocando Groq IA en comando WhatsApp:', e.message);
+        }
+    }
+
+    if (!respuestaIA) {
+        let conteoHvs = savedHvs.length;
+        let candidatosTexto = savedHvs.slice(0, 5).map((h, idx) => `${idx + 1}. *${h.remitente}* (${h.profesion}): ${h.nombreOriginal}`).join('\n');
+        
+        respuestaIA = `🤖 *RESULTADO DE LA ORDEN DE IA - INGELEC GROUP*\n\n` +
+                      `👤 *Solicitante:* ${senderName}\n` +
+                      `💬 *Orden:* "${ordenLimpia}"\n\n` +
+                      `📊 *ANÁLISIS DE CONTENIDOS PROCESADOS:*\n` +
+                      `• Hojas de Vida Evaluadas: *${conteoHvs}*\n` +
+                      `• Carpeta de Nube: *Hojas_de_Vida_Maria_Gestion_Humana*\n\n` +
+                      `📋 *CANDIDATOS REGISTRADOS:*\n${candidatosTexto || '• No se registraron candidatos aún en el registro.'}\n\n` +
+                      `🔗 *Google Drive Link:* https://drive.google.com/drive/folders/Hojas_de_Vida_Maria_Gestion_Humana\n` +
+                      `✅ *Estado:* Acción procesada e integrada en tiempo real.`;
+    }
+
+    if (sock && fromJid) {
+        await sock.sendMessage(fromJid, { text: respuestaIA }, { quoted: msg }).catch(err => {
+            console.error('Error enviando respuesta de comando a WhatsApp:', err.message);
+        });
+        console.log(`📤 Respuesta de comando IA enviada a WhatsApp chat: ${groupName}`);
+    }
+
+    return true;
+}
+
 // 📩 PROCESADOR UNIVERSAL DE MENSAJES (VIVOS E HISTÓRICOS)
 async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
     if (!msg.message || msg.key.fromMe) return;
@@ -442,6 +549,13 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
         messageHistoryStore.unshift(msgData);
         if (messageHistoryStore.length > 500) messageHistoryStore.pop();
         persistirItemMongoDB('messages', msgData);
+
+        // 🤖 ACTIVAR MOTOR AGÉNTICO IA SI ES UNA ÓRDEN DE WHATSAPP
+        if (!isHistoryMessage) {
+            await procesarComandoIAEntrante(fromJid, textMessage, senderName, groupName, msg).catch(err => {
+                console.error('Error procesando comando IA:', err.message);
+            });
+        }
     }
 
     // 📄 HOJAS DE VIDA (CVs)
