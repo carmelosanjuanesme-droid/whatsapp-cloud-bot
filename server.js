@@ -23,6 +23,7 @@ try {
     dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
 } catch (e) {}
 const { MongoClient } = require('mongodb');
+const mammoth = require('mammoth');
 require('dotenv').config();
 
 const app = express();
@@ -390,10 +391,125 @@ async function buscarContenidosUniversal(query) {
     return { query: term, resultados: resultados.slice(0, 50), total: resultados.length };
 }
 
+// 👥 CREADOR AUTOMÁTICO DE GRUPOS DESDE WORD / LISTA DE NÚMEROS
+function extraerNumerosDeTexto(texto) {
+    if (!texto || typeof texto !== 'string') return [];
+    
+    const rawMatches = texto.match(/\+?[0-9]{10,15}/g) || [];
+    const uniqueJids = new Set();
+
+    for (let raw of rawMatches) {
+        let clean = raw.replace(/[^0-9]/g, '');
+        if (clean.length === 10 && (clean.startsWith('3') || clean.startsWith('6'))) {
+            clean = '57' + clean;
+        }
+        if (clean.length >= 10 && clean.length <= 15) {
+            uniqueJids.add(`${clean}@s.whatsapp.net`);
+        }
+    }
+
+    return Array.from(uniqueJids);
+}
+
+async function extraerTextoDeDocxBuffer(buffer) {
+    try {
+        const result = await mammoth.extractRawText({ buffer });
+        return result.value || '';
+    } catch (err) {
+        console.error('Error extrayendo texto de archivo Word (.docx):', err.message);
+        return buffer.toString('utf8');
+    }
+}
+
+async function crearGrupoWhatsAppDesdeLista(nombreGrupo, contenidoTextoOBuffer, fromJidTarget = null) {
+    if (!sock) throw new Error('Servidor de WhatsApp no está conectado');
+    if (!nombreGrupo || typeof nombreGrupo !== 'string') throw new Error('Se requiere un nombre para el grupo');
+
+    let textoCompleto = '';
+    if (Buffer.isBuffer(contenidoTextoOBuffer)) {
+        textoCompleto = await extraerTextoDeDocxBuffer(contenidoTextoOBuffer);
+    } else {
+        textoCompleto = String(contenidoTextoOBuffer || '');
+    }
+
+    const participantesJids = extraerNumerosDeTexto(textoCompleto);
+    if (participantesJids.length === 0) {
+        throw new Error('No se encontraron números telefónicos válidos de 10 a 15 dígitos en el documento o lista.');
+    }
+
+    console.log(`👥 Creando grupo de WhatsApp "${nombreGrupo}" con ${participantesJids.length} participantes...`);
+
+    const groupResult = await sock.groupCreate(nombreGrupo, participantesJids);
+    const groupJid = groupResult.id;
+
+    let inviteCode = '';
+    let inviteUrl = '';
+    try {
+        inviteCode = await sock.groupInviteCode(groupJid);
+        if (inviteCode) inviteUrl = `https://chat.whatsapp.com/${inviteCode}`;
+    } catch (e) {
+        console.error('No se pudo generar código de invitación:', e.message);
+    }
+
+    const listaParticipantesFormateada = participantesJids.map(j => `• +${j.split('@')[0]}`).join('\n');
+
+    const reporteTexto = `👥 *¡GRUPO DE WHATSAPP CREADO EXITOSAMENTE!*\n\n` +
+                         `🏷️ *Nombre del Grupo:* ${nombreGrupo}\n` +
+                         `📊 *Contactos Agregados:* ${participantesJids.length}\n` +
+                         `🔗 *Enlace de Invitación:* ${inviteUrl || 'Generado automáticamente'}\n\n` +
+                         `📋 *MIEMBROS AGREGADOS:*\n${listaParticipantesFormateada}\n\n` +
+                         `🤖 *Plataforma:* Ingelec Group SAS BIC (Automatización Agéntica).`;
+
+    if (fromJidTarget) {
+        await sock.sendMessage(fromJidTarget, { text: reporteTexto }).catch(() => {});
+    }
+
+    return {
+        success: true,
+        groupId: groupJid,
+        groupName: nombreGrupo,
+        totalParticipants: participantesJids.length,
+        inviteUrl: inviteUrl,
+        reporte: reporteTexto,
+        participantes: participantesJids
+    };
+}
+
 // 🤖 MOTOR AGÉNTICO DE COMANDOS IA DESDE WHATSAPP
 async function procesarComandoIAEntrante(fromJid, textMessage, senderName, groupName, msg) {
     if (!textMessage || typeof textMessage !== 'string') return false;
     const textLower = textMessage.toLowerCase().trim();
+
+    // 👥 DETECCIÓN DE COMANDOS DE CREACIÓN DE GRUPO
+    if (textLower.includes('crear grupo') || textLower.includes('crea grupo') || textLower.includes('nuevo grupo')) {
+        let matchNombre = textMessage.match(/(?:crear grupo|crea grupo|nuevo grupo)\s+[:"-]?\s*([^"\n\r]+)/i);
+        let nombreGrupoExtraido = matchNombre ? matchNombre[1].trim() : 'Nuevo Grupo Ingelec';
+        
+        let docText = '';
+        if (msg && msg.message) {
+            const docMsg = msg.message.documentMessage || 
+                           msg.message.documentWithCaptionMessage?.message?.documentMessage;
+            if (docMsg) {
+                try {
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                    if (buffer) docText = await extraerTextoDeDocxBuffer(buffer);
+                } catch (e) {}
+            }
+        }
+
+        const textoParaNumeros = (docText + '\n' + textMessage).trim();
+        const resultadoGrupo = await crearGrupoWhatsAppDesdeLista(nombreGrupoExtraido, textoParaNumeros, fromJid).catch(err => ({ error: err.message }));
+
+        if (resultadoGrupo.error) {
+            const respuestaError = `⚠️ *ERROR CREANDO GRUPO DE WHATSAPP*\n\n` +
+                                   `❌ *Detalle:* ${resultadoGrupo.error}\n\n` +
+                                   `💡 *Tip:* Envía la lista de números en un documento Word (.docx) o pegada directamente en el mensaje con números de 10 dígitos.`;
+            if (sock && fromJid) await sock.sendMessage(fromJid, { text: respuestaError }, { quoted: msg }).catch(() => {});
+            return respuestaError;
+        }
+
+        return resultadoGrupo.reporte;
+    }
 
     const esComandoDirecto = textLower.startsWith('bot:') || 
                              textLower.startsWith('bot ') || 
@@ -948,6 +1064,23 @@ function generarResumenActividad(periodo = 'diario') {
 }
 
 // ENDPOINTS REST
+app.post('/api/create-group-from-list', async (req, res) => {
+    try {
+        const { groupName, numbersList, fileData } = req.body;
+        if (!groupName) return res.status(400).json({ success: false, error: 'Nombre de grupo requerido' });
+
+        let content = numbersList || '';
+        if (fileData) {
+            const buffer = Buffer.from(fileData, 'base64');
+            content = await extraerTextoDeDocxBuffer(buffer);
+        }
+
+        const resultado = await crearGrupoWhatsAppDesdeLista(groupName, content, null);
+        res.json({ success: true, ...resultado });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 app.post('/api/reset-session', async (req, res) => {
     try {
         console.log('🧹 Reiniciando sesión y vaciando credenciales anteriores...');

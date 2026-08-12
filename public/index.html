@@ -171,6 +171,39 @@
                         </div>
                     </div>
                 </section>
+
+                <section class="glass-card" style="margin-top: 20px;">
+                    <div class="section-header">
+                        <h2>👥 Creador Automático de Grupos desde Word (.docx) / Lista de Números</h2>
+                        <span class="status-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">⚡ Nuevo Módulo</span>
+                    </div>
+                    <p class="section-desc">Selecciona un archivo de Word (`.docx`) o pega una lista de números telefónicos para crear el grupo en WhatsApp automáticamente:</p>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">🏷️ Nombre del Nuevo Grupo:</label>
+                            <input type="text" id="newGroupNameInput" class="glass-input" placeholder="ej: Proyecto Obra Central Ingelec">
+                        </div>
+
+                        <div>
+                            <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">📁 Archivo de Word (.docx) con Lista de Contactos:</label>
+                            <input type="file" id="docxGroupFileInput" accept=".docx,.doc,.txt" class="glass-input" style="padding: 8px;">
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">📋 O Pega los Números de Teléfono Aquí (Separados por coma, enter o espacio):</label>
+                        <textarea id="numbersListTextarea" class="glass-input" rows="3" placeholder="ej: 3001234567, 3109876543, 3155554433..."></textarea>
+                    </div>
+
+                    <button id="btnCreateGroupFromWeb" class="btn-primary" style="background: linear-gradient(135deg, #059669, #10b981); width: 100%; font-size: 15px; padding: 12px;">
+                        👥 Crear Grupo de WhatsApp y Generar Enlace de Invitación
+                    </button>
+
+                    <div id="createGroupOutputContainer" style="display: none; margin-top: 16px; background: rgba(15, 23, 42, 0.9); padding: 16px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.4);">
+                        <pre id="createGroupOutputText" style="white-space: pre-wrap; font-family: 'Inter', sans-serif; color: #f1f5f9; font-size: 14px; line-height: 1.6;"></pre>
+                    </div>
+                </section>
             </div>
 
             <!-- HUB 1: TALENTO & HOJAS DE VIDA (FULL SCREEN) -->

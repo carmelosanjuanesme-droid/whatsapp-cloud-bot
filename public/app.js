@@ -679,4 +679,74 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // 👥 CREAR GRUPO DE WHATSAPP DESDE WORD O LISTA DE NÚMEROS
+    const btnCreateGroupFromWeb = document.getElementById('btnCreateGroupFromWeb');
+    const newGroupNameInput = document.getElementById('newGroupNameInput');
+    const docxGroupFileInput = document.getElementById('docxGroupFileInput');
+    const numbersListTextarea = document.getElementById('numbersListTextarea');
+    const createGroupOutputContainer = document.getElementById('createGroupOutputContainer');
+    const createGroupOutputText = document.getElementById('createGroupOutputText');
+
+    if (btnCreateGroupFromWeb) {
+        btnCreateGroupFromWeb.addEventListener('click', async () => {
+            const groupName = newGroupNameInput ? newGroupNameInput.value.trim() : '';
+            const rawNumbers = numbersListTextarea ? numbersListTextarea.value.trim() : '';
+            const file = docxGroupFileInput && docxGroupFileInput.files[0] ? docxGroupFileInput.files[0] : null;
+
+            if (!groupName) {
+                alert('Por favor ingresa un Nombre para el Nuevo Grupo');
+                return;
+            }
+
+            if (!rawNumbers && !file) {
+                alert('Por favor selecciona un archivo de Word (.docx) o pega una lista de números de teléfono.');
+                return;
+            }
+
+            btnCreateGroupFromWeb.disabled = true;
+            btnCreateGroupFromWeb.innerHTML = '⏳ Procesando documento y creando grupo en WhatsApp...';
+            if (createGroupOutputContainer) createGroupOutputContainer.style.display = 'block';
+            if (createGroupOutputText) createGroupOutputText.textContent = '👥 Extrayendo contactos y creando grupo en WhatsApp... Por favor espera...';
+
+            let fileDataBase64 = null;
+            if (file) {
+                fileDataBase64 = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            try {
+                const res = await fetch('/api/create-group-from-list', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        groupName: groupName,
+                        numbersList: rawNumbers,
+                        fileData: fileDataBase64
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    if (createGroupOutputText) {
+                        createGroupOutputText.textContent = data.reporte || 'Grupo creado con éxito.';
+                    }
+                } else {
+                    if (createGroupOutputText) {
+                        createGroupOutputText.textContent = '❌ Error creando grupo: ' + (data.error || 'Desconocido');
+                    }
+                }
+            } catch (err) {
+                if (createGroupOutputText) {
+                    createGroupOutputText.textContent = '❌ Error de red: ' + err.message;
+                }
+            } finally {
+                btnCreateGroupFromWeb.disabled = false;
+                btnCreateGroupFromWeb.innerHTML = '👥 Crear Grupo de WhatsApp y Generar Enlace de Invitación';
+            }
+        });
+    }
 });
