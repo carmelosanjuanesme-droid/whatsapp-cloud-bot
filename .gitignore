@@ -1,0 +1,5 @@
+node_modules/
+.env
+public/downloads/
+baileys_auth_info/
+session_backup.json
