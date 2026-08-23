@@ -168,34 +168,82 @@ async function initMongoDB(retries = 5) {
     return null;
 }
 
-async function cargarDatosDesdeMongoDB() {
-    if (!mongoDb) return;
+const masterDbFile = path.join(__dirname, 'db_persistent_master.json');
+
+function cargarMasterStoreLocal() {
     try {
-        const [photos, hvs, audios, reminders, events, msgs, uptimes] = await Promise.all([
-            mongoDb.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
-            mongoDb.collection('hojas_de_vida').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
-            mongoDb.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
-            mongoDb.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
-            mongoDb.collection('events').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
-            mongoDb.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray().catch(() => []),
-            mongoDb.collection('uptime_logs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => [])
-        ]);
+        if (fs.existsSync(masterDbFile)) {
+            const raw = fs.readFileSync(masterDbFile, 'utf8');
+            const data = JSON.parse(raw);
+            if (data) {
+                if (data.photos && Array.isArray(data.photos) && data.photos.length > 0) savedPhotos = data.photos;
+                if (data.hvs && Array.isArray(data.hvs) && data.hvs.length > 0) savedHvs = data.hvs;
+                if (data.audios && Array.isArray(data.audios) && data.audios.length > 0) savedAudios = data.audios;
+                if (data.reminders && Array.isArray(data.reminders) && data.reminders.length > 0) capturedReminders = data.reminders;
+                if (data.events && Array.isArray(data.events) && data.events.length > 0) lastEvents = data.events;
+                if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) messageHistoryStore = data.messages;
+                if (data.uptimeLogs && Array.isArray(data.uptimeLogs) && data.uptimeLogs.length > 0) uptimeLogs = data.uptimeLogs;
+                console.log(`📦 Master Store Local cargado en 0ms: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios, ${capturedReminders.length} citas.`);
+            }
+        }
+    } catch (e) {
+        console.error('Error cargando Master Store Local:', e.message);
+    }
+}
 
-        savedPhotos = photos || [];
-        savedHvs = hvs || [];
-        savedAudios = audios || [];
-        capturedReminders = reminders || [];
-        lastEvents = events || [];
-        messageHistoryStore = msgs || [];
-        uptimeLogs = uptimes || [];
+function guardarMasterStoreLocal() {
+    try {
+        const payload = {
+            photos: savedPhotos,
+            hvs: savedHvs,
+            audios: savedAudios,
+            reminders: capturedReminders,
+            events: lastEvents,
+            messages: messageHistoryStore.slice(0, 500),
+            uptimeLogs: uptimeLogs.slice(0, 200),
+            updatedAt: new Date().toISOString()
+        };
+        fs.writeFileSync(masterDbFile, JSON.stringify(payload, null, 2));
+    } catch (e) {
+        console.error('Error guardando Master Store Local:', e.message);
+    }
+}
 
-        console.log(`🍃 Datos persistentes restaurados en paralelo desde MongoDB Atlas: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios, ${uptimeLogs.length} logs de uptime.`);
+// Cargar Master Store al arrancar el proceso
+cargarMasterStoreLocal();
+
+async function cargarDatosDesdeMongoDB() {
+    try {
+        const db = await initMongoDB();
+        if (db) {
+            const [photos, hvs, audios, reminders, events, msgs, uptimes] = await Promise.all([
+                db.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+                db.collection('hojas_de_vida').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
+                db.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+                db.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+                db.collection('events').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+                db.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray().catch(() => []),
+                db.collection('uptime_logs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => [])
+            ]);
+
+            if (photos && photos.length > 0) savedPhotos = photos;
+            if (hvs && hvs.length > 0) savedHvs = hvs;
+            if (audios && audios.length > 0) savedAudios = audios;
+            if (reminders && reminders.length > 0) capturedReminders = reminders;
+            if (events && events.length > 0) lastEvents = events;
+            if (msgs && msgs.length > 0) messageHistoryStore = msgs;
+            if (uptimes && uptimes.length > 0) uptimeLogs = uptimes;
+
+            guardarMasterStoreLocal();
+            console.log(`🍃 Datos persistentes sincronizados desde MongoDB Atlas: ${savedPhotos.length} fotos, ${savedHvs.length} HVs, ${savedAudios.length} audios, ${capturedReminders.length} citas.`);
+        }
     } catch (e) {
         console.error('Error restaurando datos desde MongoDB Atlas:', e.message);
     }
 }
 
 async function persistirItemMongoDB(coleccion, item) {
+    guardarMasterStoreLocal();
     try {
         const db = await initMongoDB();
         if (db) {
@@ -215,14 +263,17 @@ function isBase64Str(str) {
     }
 }
 
-// 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE CON CACHÉ EN MEMORIA Y RESPALDO DUAL (QR NUNCA MÁS)
+// 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE CON CACHÉ EN MEMORIA Y RESPALDO DUAL (MAESTRO DE REGISTRO)
 async function useMongoDBAuthState(db) {
     const collection = db.collection('baileys_atomic_auth');
 
-    // Cargar credenciales principales
+    // Cargar credenciales principales (Prioridad 1: Documento Maestro Registrado)
     let credsDoc = null;
     try {
-        credsDoc = await collection.findOne({ _id: 'creds' });
+        credsDoc = await collection.findOne({ _id: 'registered_creds_master' });
+        if (!credsDoc || !credsDoc.data) {
+            credsDoc = await collection.findOne({ _id: 'creds' });
+        }
     } catch (e) {}
 
     let creds;
@@ -231,6 +282,7 @@ async function useMongoDBAuthState(db) {
         try {
             fs.writeFileSync(backupFile, JSON.stringify(credsDoc.data));
         } catch (e) {}
+        console.log(`🍃 Credenciales cargadas exitosamente desde MongoDB Atlas (${creds?.me?.id ? 'Registradas: +' + creds.me.id.split('@')[0] : 'Estado Inicial'}).`);
     } else if (fs.existsSync(backupFile)) {
         try {
             const fileData = JSON.parse(fs.readFileSync(backupFile, 'utf8'));
@@ -300,11 +352,22 @@ async function useMongoDBAuthState(db) {
             try {
                 fs.writeFileSync(backupFile, JSON.stringify(serializedCreds));
             } catch (e) {}
+
             await collection.updateOne(
                 { _id: 'creds' },
                 { $set: { data: serializedCreds, updatedAt: new Date() } },
                 { upsert: true }
             ).catch(() => {});
+
+            // Si las credenciales contienen la identidad del usuario (creds.me), SELLAMOS EL DOCUMENTO MAESTRO INMUTABLE
+            if (creds && (creds.me || creds.registered)) {
+                await collection.updateOne(
+                    { _id: 'registered_creds_master' },
+                    { $set: { data: serializedCreds, registeredAt: new Date(), phone: creds.me?.id || '' } },
+                    { upsert: true }
+                ).catch(() => {});
+                console.log(`🔒 [SELLADO MAESTRO] Credenciales registradas guardadas en registered_creds_master en MongoDB Atlas (${creds.me?.id || 'Registrado'}).`);
+            }
         }
     };
 }
