@@ -147,8 +147,8 @@ async function initMongoDB(retries = 5) {
         try {
             let uri = MONGODB_URI.trim();
             mongoClient = new MongoClient(uri, {
-                serverSelectionTimeoutMS: 15000,
-                connectTimeoutMS: 15000
+                serverSelectionTimeoutMS: 2500,
+                connectTimeoutMS: 2500
             });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
