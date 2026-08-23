@@ -700,6 +700,24 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
                 console.error('Error procesando comando IA:', err.message);
             });
         }
+
+        // 📅 DETECCIÓN AUTOMÁTICA DE CITAS Y COMPROMISOS (CALENDARIO)
+        const isCalendarKeyword = CALENDAR_KEYWORDS.some(kw => textLower.includes(kw));
+        if (isCalendarKeyword && textMessage.length > 5) {
+            const reminderData = {
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                fecha: dateStr,
+                hora: timeStr,
+                grupo: groupName,
+                remitente: senderName,
+                texto: textMessage
+            };
+            capturedReminders.unshift(reminderData);
+            if (capturedReminders.length > 50) capturedReminders.pop();
+            io.emit('new-reminder', reminderData);
+            persistirItemMongoDB('reminders', reminderData);
+            console.log(`📅 Cita/Compromiso agendado automáticamente: "${textMessage.substring(0, 40)}..."`);
+        }
     }
 
     // 📄 HOJAS DE VIDA (CVs)
