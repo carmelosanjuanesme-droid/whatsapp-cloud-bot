@@ -311,14 +311,46 @@ async function sincronizarAuthDirConMongoDB(db, dir) {
 }
 
 async function cargarAuthDirDesdeMongoDB(db, dir) {
-    if (!db) return;
-    try {
-        const collection = db.collection('baileys_atomic_auth');
-        const doc = await collection.findOne({ _id: 'baileys_auth_dir_master' });
-        if (doc && doc.map && Object.keys(doc.map).length > 0) {
-            restoreAuthDirFromMap(dir, doc.map);
-        }
-    } catch (e) {}
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    
+    // 1. Intentar restaurar desde mapa maestro baileys_auth_dir_master
+    if (db) {
+        try {
+            const collection = db.collection('baileys_atomic_auth');
+            const doc = await collection.findOne({ _id: 'baileys_auth_dir_master' });
+            if (doc && doc.map && Object.keys(doc.map).length > 0) {
+                restoreAuthDirFromMap(dir, doc.map);
+                if (fs.existsSync(path.join(dir, 'creds.json'))) return;
+            }
+        } catch (e) {}
+    }
+
+    // 2. Fallback: Restaurar creds.json desde MongoDB Atlas (registered_creds_master o creds)
+    if (db) {
+        try {
+            const collection = db.collection('baileys_atomic_auth');
+            let credsDoc = await collection.findOne({ _id: 'registered_creds_master' });
+            if (!credsDoc || !credsDoc.data) {
+                credsDoc = await collection.findOne({ _id: 'creds' });
+            }
+            if (credsDoc && credsDoc.data) {
+                const credsFile = path.join(dir, 'creds.json');
+                fs.writeFileSync(credsFile, JSON.stringify(credsDoc.data), 'utf8');
+                console.log(`📦 creds.json recreado exitosamente desde MongoDB Atlas.`);
+                return;
+            }
+        } catch (e) {}
+    }
+
+    // 3. Fallback: Restaurar creds.json desde session_backup.json local
+    if (fs.existsSync(backupFile)) {
+        try {
+            const backupData = fs.readFileSync(backupFile, 'utf8');
+            const credsFile = path.join(dir, 'creds.json');
+            fs.writeFileSync(credsFile, backupData, 'utf8');
+            console.log(`📦 creds.json recreado desde session_backup.json local.`);
+        } catch (e) {}
+    }
 }
 
 // 📁 SUBIDA AUTOMÁTICA A GOOGLE DRIVE VIA WEBHOOK
