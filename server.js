@@ -1031,8 +1031,12 @@ async function connectToWhatsApp() {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
             connectionStatus = 'CONECTADO_24_7';
             qrCodeDataUrl = null;
+            if (sock?.user) {
+                state.creds.me = sock.user;
+                await saveCreds();
+            }
             io.emit('status-update', { status: connectionStatus, qr: null });
-            registrarLogConexion('CONECTADO_24_7', '🟢 Sesión 24/7 activa y respaldada en MongoDB Atlas (Motor Atómico)');
+            registrarLogConexion('CONECTADO_24_7', `🟢 Sesión 24/7 activa para +${sock?.user?.id?.split('@')[0] || 'Ingelec'} y respaldada en MongoDB Atlas`);
         }
     });
 
