@@ -358,61 +358,167 @@ async function transcribirAudioIA(audioFilePath) {
     return '🎙️ *Nota de voz capturada en la Nube.* (Añada la clave gratuita GROQ_API_KEY en Render para activar la transcripción en texto).';
 }
 
-// 🔍 MOTOR DE BÚSQUEDA UNIVERSAL EN CHATS, GRUPOS Y ARCHIVOS
+// 🔍 MOTOR DE BÚSQUEDA UNIVERSAL EN CHATS, MONGODB ATLAS Y ARCHIVOS
 async function buscarContenidosUniversal(query) {
     const term = (query || '').toLowerCase().trim();
     if (!term) return { resultados: [], total: 0 };
 
     const resultados = [];
+    const db = await initMongoDB();
+    const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-    for (const msg of messageHistoryStore) {
-        if ((msg.texto || '').toLowerCase().includes(term) || (msg.remitente || '').toLowerCase().includes(term) || (msg.grupo || '').toLowerCase().includes(term)) {
-            resultados.push({
-                tipo: '💬 Mensaje de Chat',
-                fecha: `${msg.fecha} ${msg.hora}`,
-                chat: msg.grupo,
-                remitente: msg.remitente,
-                contenido: msg.texto
-            });
+    // 1. Buscar en MongoDB Atlas (Mensajes de Chat, Audios, HVs, Fotos, Citas)
+    if (db) {
+        try {
+            const dbMsgs = await db.collection('messages').find({
+                $or: [
+                    { texto: regex },
+                    { remitente: regex },
+                    { grupo: regex }
+                ]
+            }).limit(30).toArray();
+
+            for (const msg of dbMsgs) {
+                resultados.push({
+                    tipo: '💬 Mensaje de Chat',
+                    fecha: `${msg.fecha || ''} ${msg.hora || ''}`,
+                    chat: msg.grupo || 'Chat WhatsApp',
+                    remitente: msg.remitente || 'Contacto',
+                    contenido: msg.texto
+                });
+            }
+
+            const dbAudios = await db.collection('audios').find({
+                $or: [
+                    { transcripcion: regex },
+                    { remitente: regex },
+                    { grupo: regex }
+                ]
+            }).limit(30).toArray();
+
+            for (const audio of dbAudios) {
+                resultados.push({
+                    tipo: '🎙️ Audio Transcrito por IA',
+                    fecha: `${audio.fecha || ''} ${audio.hora || ''}`,
+                    chat: audio.grupo || 'Chat WhatsApp',
+                    remitente: audio.remitente || 'Contacto',
+                    contenido: audio.transcripcion,
+                    url: audio.url
+                });
+            }
+
+            const dbHvs = await db.collection('hojas_de_vida').find({
+                $or: [
+                    { descripcion: regex },
+                    { remitente: regex },
+                    { profesion: regex },
+                    { nombreOriginal: regex }
+                ]
+            }).limit(30).toArray();
+
+            for (const hv of dbHvs) {
+                resultados.push({
+                    tipo: '📄 Hoja de Vida',
+                    fecha: `${hv.fecha || ''} ${hv.hora || ''}`,
+                    chat: hv.grupo || 'Chat WhatsApp',
+                    remitente: hv.remitente || 'Contacto',
+                    contenido: `${hv.profesion || 'Candidato'} - ${hv.nombreOriginal || 'CV'}: ${hv.descripcion || ''}`,
+                    url: hv.url
+                });
+            }
+
+            const dbPhotos = await db.collection('photos').find({
+                $or: [
+                    { descripcion: regex },
+                    { remitente: regex },
+                    { grupo: regex }
+                ]
+            }).limit(30).toArray();
+
+            for (const photo of dbPhotos) {
+                resultados.push({
+                    tipo: '📷 Fotografía HD',
+                    fecha: `${photo.fecha || ''} ${photo.hora || ''}`,
+                    chat: photo.grupo || 'Chat WhatsApp',
+                    remitente: photo.remitente || 'Contacto',
+                    contenido: photo.descripcion || 'Fotografía',
+                    url: photo.url
+                });
+            }
+
+            const dbReminders = await db.collection('reminders').find({
+                $or: [
+                    { texto: regex },
+                    { remitente: regex },
+                    { grupo: regex }
+                ]
+            }).limit(30).toArray();
+
+            for (const rem of dbReminders) {
+                resultados.push({
+                    tipo: '📅 Cita / Compromiso',
+                    fecha: `${rem.fecha || ''} ${rem.hora || ''}`,
+                    chat: rem.grupo || 'Chat WhatsApp',
+                    remitente: rem.remitente || 'Contacto',
+                    contenido: rem.texto
+                });
+            }
+        } catch (e) {
+            console.error('Error buscando en MongoDB Atlas:', e.message);
         }
     }
 
-    for (const audio of savedAudios) {
-        if ((audio.transcripcion || '').toLowerCase().includes(term) || (audio.remitente || '').toLowerCase().includes(term) || (audio.grupo || '').toLowerCase().includes(term)) {
-            resultados.push({
-                tipo: '🎙️ Audio Transcrito por IA',
-                fecha: `${audio.fecha} ${audio.hora}`,
-                chat: audio.grupo,
-                remitente: audio.remitente,
-                contenido: audio.transcripcion,
-                url: audio.url
-            });
+    // Fallback a memoria RAM si MongoDB Atlas no retornó coincidencias
+    if (resultados.length === 0) {
+        for (const msg of messageHistoryStore) {
+            if ((msg.texto || '').toLowerCase().includes(term) || (msg.remitente || '').toLowerCase().includes(term) || (msg.grupo || '').toLowerCase().includes(term)) {
+                resultados.push({
+                    tipo: '💬 Mensaje de Chat',
+                    fecha: `${msg.fecha} ${msg.hora}`,
+                    chat: msg.grupo,
+                    remitente: msg.remitente,
+                    contenido: msg.texto
+                });
+            }
         }
-    }
 
-    for (const hv of savedHvs) {
-        if ((hv.descripcion || '').toLowerCase().includes(term) || (hv.remitente || '').toLowerCase().includes(term) || (hv.profesion || '').toLowerCase().includes(term) || (hv.nombreOriginal || '').toLowerCase().includes(term)) {
-            resultados.push({
-                tipo: '📄 Hoja de Vida',
-                fecha: `${hv.fecha} ${hv.hora}`,
-                chat: hv.grupo,
-                remitente: hv.remitente,
-                contenido: `${hv.profesion} - ${hv.nombreOriginal}: ${hv.descripcion}`,
-                url: hv.url
-            });
+        for (const audio of savedAudios) {
+            if ((audio.transcripcion || '').toLowerCase().includes(term) || (audio.remitente || '').toLowerCase().includes(term) || (audio.grupo || '').toLowerCase().includes(term)) {
+                resultados.push({
+                    tipo: '🎙️ Audio Transcrito por IA',
+                    fecha: `${audio.fecha} ${audio.hora}`,
+                    chat: audio.grupo,
+                    remitente: audio.remitente,
+                    contenido: audio.transcripcion,
+                    url: audio.url
+                });
+            }
         }
-    }
 
-    for (const photo of savedPhotos) {
-        if ((photo.descripcion || '').toLowerCase().includes(term) || (photo.remitente || '').toLowerCase().includes(term) || (photo.grupo || '').toLowerCase().includes(term)) {
-            resultados.push({
-                tipo: '📷 Fotografía HD',
-                fecha: `${photo.fecha} ${photo.hora}`,
-                chat: photo.grupo,
-                remitente: photo.remitente,
-                contenido: photo.descripcion,
-                url: photo.url
-            });
+        for (const hv of savedHvs) {
+            if ((hv.descripcion || '').toLowerCase().includes(term) || (hv.remitente || '').toLowerCase().includes(term) || (hv.profesion || '').toLowerCase().includes(term) || (hv.nombreOriginal || '').toLowerCase().includes(term)) {
+                resultados.push({
+                    tipo: '📄 Hoja de Vida',
+                    fecha: `${hv.fecha} ${hv.hora}`,
+                    chat: hv.grupo,
+                    remitente: hv.remitente,
+                    contenido: `${hv.profesion} - ${hv.nombreOriginal}: ${hv.descripcion}`,
+                    url: hv.url
+                });
+            }
+        }
+
+        for (const photo of savedPhotos) {
+            if ((photo.descripcion || '').toLowerCase().includes(term) || (photo.remitente || '').toLowerCase().includes(term) || (photo.grupo || '').toLowerCase().includes(term)) {
+                resultados.push({
+                    tipo: '📷 Fotografía HD',
+                    fecha: `${photo.fecha} ${photo.hora}`,
+                    chat: photo.grupo,
+                    remitente: photo.remitente,
+                    contenido: photo.descripcion,
+                    url: photo.url
+                });
+            }
         }
     }
 
