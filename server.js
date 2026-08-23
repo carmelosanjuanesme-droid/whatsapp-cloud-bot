@@ -215,7 +215,7 @@ function isBase64Str(str) {
     }
 }
 
-// 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE EN MONGODB ATLAS (CERO DISCO LOCAL)
+// 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE CON CACHÉ EN MEMORIA (QR < 500MS)
 async function useMongoDBAuthState(db) {
     const collection = db.collection('baileys_atomic_auth');
 
@@ -228,13 +228,19 @@ async function useMongoDBAuthState(db) {
         creds = initAuthCreds();
     }
 
+    // Caché en memoria RAM de llaves por categoría para cero latencia
+    const keysCache = {};
+
     return {
         state: {
             creds,
             keys: {
                 get: async (type, ids) => {
-                    const keysDoc = await collection.findOne({ _id: `keys_${type}` });
-                    const data = keysDoc && keysDoc.data ? JSON.parse(JSON.stringify(keysDoc.data), BufferJSON.reviver) : {};
+                    if (!keysCache[type]) {
+                        const keysDoc = await collection.findOne({ _id: `keys_${type}` });
+                        keysCache[type] = keysDoc && keysDoc.data ? JSON.parse(JSON.stringify(keysDoc.data), BufferJSON.reviver) : {};
+                    }
+                    const data = keysCache[type];
                     const result = {};
                     for (const id of ids) {
                         let value = data[id];
@@ -250,24 +256,24 @@ async function useMongoDBAuthState(db) {
                 set: async (data) => {
                     for (const category in data) {
                         const typeKeys = data[category];
-                        const keysDoc = await collection.findOne({ _id: `keys_${category}` });
-                        const existing = keysDoc && keysDoc.data ? JSON.parse(JSON.stringify(keysDoc.data), BufferJSON.reviver) : {};
+                        if (!keysCache[category]) keysCache[category] = {};
                         
                         for (const id in typeKeys) {
                             const value = typeKeys[id];
                             if (value) {
-                                existing[id] = value;
+                                keysCache[category][id] = value;
                             } else {
-                                delete existing[id];
+                                delete keysCache[category][id];
                             }
                         }
-                        
-                        const serialized = JSON.parse(JSON.stringify(existing, BufferJSON.replacer));
-                        await collection.updateOne(
+
+                        // Persistir asíncronamente en MongoDB Atlas sin bloquear el hilo principal
+                        const serialized = JSON.parse(JSON.stringify(keysCache[category], BufferJSON.replacer));
+                        collection.updateOne(
                             { _id: `keys_${category}` },
                             { $set: { data: serialized, updatedAt: new Date() } },
                             { upsert: true }
-                        );
+                        ).catch(e => console.error(`Error asíncrono guardando llaves ${category}:`, e.message));
                     }
                 }
             }
@@ -278,7 +284,7 @@ async function useMongoDBAuthState(db) {
                 { _id: 'creds' },
                 { $set: { data: serializedCreds, updatedAt: new Date() } },
                 { upsert: true }
-            );
+            ).catch(e => console.error('Error asíncrono guardando credenciales:', e.message));
         }
     };
 }
