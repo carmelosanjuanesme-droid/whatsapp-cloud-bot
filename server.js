@@ -147,8 +147,8 @@ async function initMongoDB(retries = 5) {
         try {
             let uri = MONGODB_URI.trim();
             mongoClient = new MongoClient(uri, {
-                serverSelectionTimeoutMS: 2500,
-                connectTimeoutMS: 2500
+                serverSelectionTimeoutMS: 8000,
+                connectTimeoutMS: 8000
             });
             await mongoClient.connect();
             mongoDb = mongoClient.db('whatsapp_bot');
@@ -215,20 +215,34 @@ function isBase64Str(str) {
     }
 }
 
-// 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE CON CACHÉ EN MEMORIA (QR < 500MS)
+// 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE CON CACHÉ EN MEMORIA Y RESPALDO DUAL (QR NUNCA MÁS)
 async function useMongoDBAuthState(db) {
     const collection = db.collection('baileys_atomic_auth');
 
     // Cargar credenciales principales
-    const credsDoc = await collection.findOne({ _id: 'creds' });
+    let credsDoc = null;
+    try {
+        credsDoc = await collection.findOne({ _id: 'creds' });
+    } catch (e) {}
+
     let creds;
     if (credsDoc && credsDoc.data) {
         creds = JSON.parse(JSON.stringify(credsDoc.data), BufferJSON.reviver);
+        try {
+            fs.writeFileSync(backupFile, JSON.stringify(credsDoc.data));
+        } catch (e) {}
+    } else if (fs.existsSync(backupFile)) {
+        try {
+            const fileData = JSON.parse(fs.readFileSync(backupFile, 'utf8'));
+            creds = JSON.parse(JSON.stringify(fileData), BufferJSON.reviver);
+            console.log('📦 Credenciales restauradas desde respaldo local session_backup.json.');
+        } catch (e) {
+            creds = initAuthCreds();
+        }
     } else {
         creds = initAuthCreds();
     }
 
-    // Caché en memoria RAM de llaves por categoría para cero latencia
     const keysCache = {};
 
     return {
@@ -237,8 +251,12 @@ async function useMongoDBAuthState(db) {
             keys: {
                 get: async (type, ids) => {
                     if (!keysCache[type]) {
-                        const keysDoc = await collection.findOne({ _id: `keys_${type}` });
-                        keysCache[type] = keysDoc && keysDoc.data ? JSON.parse(JSON.stringify(keysDoc.data), BufferJSON.reviver) : {};
+                        try {
+                            const keysDoc = await collection.findOne({ _id: `keys_${type}` });
+                            keysCache[type] = keysDoc && keysDoc.data ? JSON.parse(JSON.stringify(keysDoc.data), BufferJSON.reviver) : {};
+                        } catch (e) {
+                            keysCache[type] = {};
+                        }
                     }
                     const data = keysCache[type];
                     const result = {};
@@ -267,24 +285,26 @@ async function useMongoDBAuthState(db) {
                             }
                         }
 
-                        // Persistir asíncronamente en MongoDB Atlas sin bloquear el hilo principal
                         const serialized = JSON.parse(JSON.stringify(keysCache[category], BufferJSON.replacer));
                         collection.updateOne(
                             { _id: `keys_${category}` },
                             { $set: { data: serialized, updatedAt: new Date() } },
                             { upsert: true }
-                        ).catch(e => console.error(`Error asíncrono guardando llaves ${category}:`, e.message));
+                        ).catch(() => {});
                     }
                 }
             }
         },
         saveCreds: async () => {
             const serializedCreds = JSON.parse(JSON.stringify(creds, BufferJSON.replacer));
+            try {
+                fs.writeFileSync(backupFile, JSON.stringify(serializedCreds));
+            } catch (e) {}
             await collection.updateOne(
                 { _id: 'creds' },
                 { $set: { data: serializedCreds, updatedAt: new Date() } },
                 { upsert: true }
-            ).catch(e => console.error('Error asíncrono guardando credenciales:', e.message));
+            ).catch(() => {});
         }
     };
 }
