@@ -335,7 +335,7 @@ async function transcribirAudioIA(audioFilePath) {
         console.log('⚠️ GROQ_API_KEY no configurado en variables de entorno de Render.');
     }
 
-    return '🎙️ *Nota de voz recibida y capturada exitosamente en el sistema de Ingelec Cloud.*';
+    return '🎙️ *Nota de voz capturada en la Nube.* (Añada la clave gratuita GROQ_API_KEY en Render para activar la transcripción en texto).';
 }
 
 // 🔍 MOTOR DE BÚSQUEDA UNIVERSAL EN CHATS, GRUPOS Y ARCHIVOS
