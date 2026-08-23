@@ -308,7 +308,7 @@ async function respaldarEnGoogleDrive(filePath, folderName, originalFilename) {
 
 // 🎙️ TRANCRIPCIÓN DE AUDIOS DE VOZ CON IA (GROQ WHISPER)
 async function transcribirAudioIA(audioFilePath) {
-    const groqKey = process.env.GROQ_API_KEY || GROQ_API_KEY || '';
+    const groqKey = (process.env.GROQ_API_KEY || process.env.GROQ_KEY || process.env.WHISPER_KEY || GROQ_API_KEY || '').trim();
     if (groqKey) {
         try {
             const FormData = require('form-data');
@@ -758,10 +758,11 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
                 key: msg.key,
                 message: { audioMessage: audioMsg }
             };
-            const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) }).catch(e => {
-                console.error('Error descargando audio:', e.message);
-                return null;
-            });
+            let buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) }).catch(() => null);
+            if (!buffer) {
+                buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }).catch(() => null);
+            }
+
             if (buffer) {
                 const filename = `Audio_${dateStr}_${senderName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.ogg`;
                 const filePath = path.join(audiosDir, filename);
@@ -787,8 +788,10 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
                 persistirItemMongoDB('audios', audioData);
 
                 if (transcripcion && typeof transcripcion === 'string' && transcripcion.trim().length > 0) {
-                    await sock.sendMessage(fromJid, { text: transcripcion.trim() }, { quoted: msg }).catch(err => {
-                        console.error('Error enviando transcripción al chat:', err.message);
+                    await sock.sendMessage(fromJid, { text: transcripcion.trim() }, { quoted: msg }).catch(async () => {
+                        await sock.sendMessage(fromJid, { text: transcripcion.trim() }).catch(err => {
+                            console.error('Error enviando transcripción al chat:', err.message);
+                        });
                     });
                 }
 
