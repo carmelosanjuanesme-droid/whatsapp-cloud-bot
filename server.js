@@ -1015,7 +1015,7 @@ async function connectToWhatsApp() {
     }
 
     const { state, saveCreds } = authState;
-    const isSessionRegistered = Boolean(state?.creds?.me?.id);
+    const isSessionRegistered = Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
 
     connectionStatus = isSessionRegistered ? 'RESTAURANDO_SESION' : 'ESPERANDO_QR';
     io.emit('status-update', { status: connectionStatus, qr: isSessionRegistered ? null : qrCodeDataUrl });
@@ -1087,7 +1087,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        const isRegistered = Boolean(state?.creds?.me?.id);
+        const isRegistered = Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
 
         if (qr && !isRegistered) {
             console.log('📌 Código QR generado. Listo para escanear.');
@@ -1099,6 +1099,10 @@ async function connectToWhatsApp() {
             } catch (err) {
                 console.error('Error convirtiendo QR a DataURL:', err);
             }
+        } else if (qr && isRegistered) {
+            console.log('🔄 Ignorando QR temporal: La sesión ya está registrada en MongoDB Atlas. Restaurando automáticamente...');
+            connectionStatus = 'RESTAURANDO_SESION';
+            io.emit('status-update', { status: connectionStatus, qr: null });
         }
 
         if (connection === 'close') {
