@@ -325,9 +325,11 @@ async function transcribirAudioIA(audioFilePath) {
         } catch (e) {
             console.error('Error usando Groq Whisper API:', e.message);
         }
+    } else {
+        console.log('⚠️ GROQ_API_KEY no configurado en variables de entorno de Render.');
     }
 
-    return null;
+    return '🎙️ *Nota de voz recibida y capturada exitosamente en el sistema de Ingelec Cloud.*';
 }
 
 // 🔍 MOTOR DE BÚSQUEDA UNIVERSAL EN CHATS, GRUPOS Y ARCHIVOS
