@@ -263,119 +263,62 @@ function isBase64Str(str) {
     }
 }
 
-// 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE CON CACHÉ EN MEMORIA Y RESPALDO DUAL (MAESTRO DE REGISTRO)
-async function useMongoDBAuthState(db) {
-    const collection = db ? db.collection('baileys_atomic_auth') : null;
-
-    // Cargar credenciales principales (Prioridad 1: Documento Maestro Registrado)
-    let credsDoc = null;
-    if (collection) {
-        try {
-            credsDoc = await collection.findOne({ _id: 'registered_creds_master' });
-            if (!credsDoc || !credsDoc.data) {
-                credsDoc = await collection.findOne({ _id: 'creds' });
-            }
-        } catch (e) {}
-    }
-
-    let creds;
-    if (credsDoc && credsDoc.data) {
-        creds = JSON.parse(JSON.stringify(credsDoc.data), BufferJSON.reviver);
-        try {
-            fs.writeFileSync(backupFile, JSON.stringify(credsDoc.data));
-        } catch (e) {}
-        console.log(`🍃 Credenciales cargadas exitosamente desde MongoDB Atlas (${creds?.me?.id ? 'Registradas: +' + creds.me.id.split('@')[0] : 'Estado Inicial'}).`);
-    } else if (fs.existsSync(backupFile)) {
-        try {
-            const fileData = JSON.parse(fs.readFileSync(backupFile, 'utf8'));
-            creds = JSON.parse(JSON.stringify(fileData), BufferJSON.reviver);
-            console.log('📦 Credenciales restauradas desde respaldo local session_backup.json.');
-        } catch (e) {
-            creds = initAuthCreds();
-        }
-    } else {
-        creds = initAuthCreds();
-    }
-
-    const keysCache = {};
-
-    return {
-        state: {
-            creds,
-            keys: {
-                get: async (type, ids) => {
-                    if (!keysCache[type]) {
-                        try {
-                            const keysDoc = collection ? await collection.findOne({ _id: `keys_${type}` }) : null;
-                            keysCache[type] = keysDoc && keysDoc.data ? JSON.parse(JSON.stringify(keysDoc.data), BufferJSON.reviver) : {};
-                        } catch (e) {
-                            keysCache[type] = {};
-                        }
-                    }
-                    const data = keysCache[type];
-                    const result = {};
-                    for (const id of ids) {
-                        let value = data[id];
-                        if (type === 'app-state-sync-key' && value) {
-                            value = proto.Message.AppStateSyncKeyData.fromObject(value);
-                        }
-                        if (value) {
-                            result[id] = value;
-                        }
-                    }
-                    return result;
-                },
-                set: async (data) => {
-                    for (const category in data) {
-                        const typeKeys = data[category];
-                        if (!keysCache[category]) keysCache[category] = {};
-                        
-                        for (const id in typeKeys) {
-                            const value = typeKeys[id];
-                            if (value) {
-                                keysCache[category][id] = value;
-                            } else {
-                                delete keysCache[category][id];
-                            }
-                        }
-
-                        if (collection) {
-                            const serialized = JSON.parse(JSON.stringify(keysCache[category], BufferJSON.replacer));
-                            collection.updateOne(
-                                { _id: `keys_${category}` },
-                                { $set: { data: serialized, updatedAt: new Date() } },
-                                { upsert: true }
-                            ).catch(() => {});
-                        }
-                    }
-                }
-            }
-        },
-        saveCreds: async () => {
-            const serializedCreds = JSON.parse(JSON.stringify(creds, BufferJSON.replacer));
-            try {
-                fs.writeFileSync(backupFile, JSON.stringify(serializedCreds));
-            } catch (e) {}
-
-            if (collection) {
-                await collection.updateOne(
-                    { _id: 'creds' },
-                    { $set: { data: serializedCreds, updatedAt: new Date() } },
-                    { upsert: true }
-                ).catch(() => {});
-
-                // Si las credenciales contienen la identidad del usuario (creds.me), SELLAMOS EL DOCUMENTO MAESTRO INMUTABLE
-                if (creds && (creds.me || creds.registered)) {
-                    await collection.updateOne(
-                        { _id: 'registered_creds_master' },
-                        { $set: { data: serializedCreds, registeredAt: new Date(), phone: creds.me?.id || '' } },
-                        { upsert: true }
-                    ).catch(() => {});
-                    console.log(`🔒 [SELLADO MAESTRO] Credenciales registradas guardadas en registered_creds_master en MongoDB Atlas (${creds.me?.id || 'Registrado'}).`);
-                }
+// 🔒 MOTOR DE AUTENTICACIÓN OFICIAL MULTI-FILE CON ESPEJO ATÓMICO EN MONGODB ATLAS (CERO QR REPETIDO)
+function dumpAuthDirToMap(dir) {
+    const map = {};
+    if (!fs.existsSync(dir)) return map;
+    try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+            const fullPath = path.join(dir, file);
+            if (fs.statSync(fullPath).isFile()) {
+                map[file] = fs.readFileSync(fullPath, 'utf8');
             }
         }
-    };
+    } catch (e) {}
+    return map;
+}
+
+function restoreAuthDirFromMap(dir, map) {
+    if (!map || typeof map !== 'object') return;
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    try {
+        for (const file in map) {
+            if (map[file] && typeof map[file] === 'string') {
+                const fullPath = path.join(dir, file);
+                fs.writeFileSync(fullPath, map[file], 'utf8');
+            }
+        }
+        console.log(`📂 Espejo de llaves de autenticación oficial restaurado en ${dir} (${Object.keys(map).length} archivos).`);
+    } catch (e) {
+        console.error('Error restaurando carpeta de autenticación:', e.message);
+    }
+}
+
+async function sincronizarAuthDirConMongoDB(db, dir) {
+    if (!db) return;
+    try {
+        const collection = db.collection('baileys_atomic_auth');
+        const map = dumpAuthDirToMap(dir);
+        if (Object.keys(map).length > 0) {
+            await collection.updateOne(
+                { _id: 'baileys_auth_dir_master' },
+                { $set: { map: map, updatedAt: new Date() } },
+                { upsert: true }
+            );
+        }
+    } catch (e) {}
+}
+
+async function cargarAuthDirDesdeMongoDB(db, dir) {
+    if (!db) return;
+    try {
+        const collection = db.collection('baileys_atomic_auth');
+        const doc = await collection.findOne({ _id: 'baileys_auth_dir_master' });
+        if (doc && doc.map && Object.keys(doc.map).length > 0) {
+            restoreAuthDirFromMap(dir, doc.map);
+        }
+    } catch (e) {}
 }
 
 // 📁 SUBIDA AUTOMÁTICA A GOOGLE DRIVE VIA WEBHOOK
@@ -1064,7 +1007,7 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
 let sock = null;
 
 async function connectToWhatsApp() {
-    console.log('⚡ Iniciando conexión a WhatsApp con Persistencia ATÓMICA en MongoDB Atlas...');
+    console.log('⚡ Iniciando conexión a WhatsApp con Persistencia Oficial de Archivos MultiFile + Espejo MongoDB Atlas...');
     
     if (sock) {
         try {
@@ -1075,10 +1018,15 @@ async function connectToWhatsApp() {
     }
 
     const db = await initMongoDB();
-    const authState = await useMongoDBAuthState(db);
+    if (db) {
+        await cargarAuthDirDesdeMongoDB(db, authDir);
+    }
 
+    const authState = await useMultiFileAuthState(authDir);
     const { state, saveCreds } = authState;
-    const isSessionRegistered = Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
+
+    const credsFile = path.join(authDir, 'creds.json');
+    const isSessionRegistered = fs.existsSync(credsFile) && Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
 
     connectionStatus = isSessionRegistered ? 'RESTAURANDO_SESION' : 'ESPERANDO_QR';
     io.emit('status-update', { status: connectionStatus, qr: isSessionRegistered ? null : qrCodeDataUrl });
@@ -1122,6 +1070,9 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', async () => {
         await saveCreds();
+        if (db) {
+            await sincronizarAuthDirConMongoDB(db, authDir);
+        }
     });
 
     sock.ev.on('messaging-history.set', async ({ messages, contacts }) => {
@@ -1150,7 +1101,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        const isRegistered = Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
+        const isRegistered = fs.existsSync(credsFile) && Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
 
         if (qr && !isRegistered) {
             console.log('📌 Código QR generado. Listo para escanear.');
@@ -1178,10 +1129,8 @@ async function connectToWhatsApp() {
                 console.log('🧹 Sesión desvinculada explícitamente por WhatsApp. Limpiando credenciales en MongoDB Atlas...');
                 try {
                     fs.rmSync(authDir, { recursive: true, force: true });
-                    if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
                     if (db) {
                         await db.collection('baileys_atomic_auth').deleteMany({});
-                        await db.collection('session_auth').deleteMany({});
                     }
                 } catch (e) {}
                 connectionStatus = 'ESPERANDO_QR';
@@ -1191,11 +1140,7 @@ async function connectToWhatsApp() {
                 setTimeout(connectToWhatsApp, 3000);
             } else {
                 console.log('🔄 Reabriendo socket de WhatsApp automáticamente (Preservando MongoDB Atlas)...');
-                if (isRegistered) {
-                    connectionStatus = 'CONECTADO_24_7';
-                } else {
-                    connectionStatus = 'INICIALIZANDO';
-                }
+                connectionStatus = isRegistered ? 'CONECTADO_24_7' : 'INICIALIZANDO';
                 io.emit('status-update', { status: connectionStatus, qr: isRegistered ? null : qrCodeDataUrl });
                 registrarLogConexion('RECONECTANDO', `Reconexión automática de socket (Código HTTP ${statusCode || 'Socket Switch'})`);
                 setTimeout(connectToWhatsApp, 2000);
@@ -1204,9 +1149,9 @@ async function connectToWhatsApp() {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
             connectionStatus = 'CONECTADO_24_7';
             qrCodeDataUrl = null;
-            if (sock?.user) {
-                state.creds.me = sock.user;
-                await saveCreds();
+            await saveCreds();
+            if (db) {
+                await sincronizarAuthDirConMongoDB(db, authDir);
             }
             io.emit('status-update', { status: connectionStatus, qr: null });
             registrarLogConexion('CONECTADO_24_7', `🟢 Sesión 24/7 activa para +${sock?.user?.id?.split('@')[0] || 'Ingelec'} y respaldada en MongoDB Atlas`);
