@@ -1292,6 +1292,28 @@ app.post('/api/reset-session', async (req, res) => {
     }
 });
 
+app.get('/api/reload-latest-files', async (req, res) => {
+    try {
+        const db = await initMongoDB();
+        if (db) {
+            await cargarDatosDesdeMongoDB();
+        }
+        res.json({
+            success: true,
+            status: connectionStatus,
+            photos: savedPhotos,
+            hvs: savedHvs,
+            audios: savedAudios,
+            reminders: capturedReminders,
+            events: lastEvents,
+            uptimeLogs: uptimeLogs,
+            timestamp: new Date().toLocaleTimeString('es-CO')
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/api/search-content', async (req, res) => {
     try {
         const query = req.query.q || '';

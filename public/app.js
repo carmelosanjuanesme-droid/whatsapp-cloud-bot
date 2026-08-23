@@ -44,6 +44,27 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalReminders = 0;
     let currentHvsList = [];
 
+    // 🔄 RUTINA DE RECARGA AUTOMÁTICA DE ÚLTIMOS ARCHIVOS A TODOS LOS ESCENARIOS
+    async function recargarEscenariosCompleto() {
+        try {
+            const res = await fetch('/api/reload-latest-files');
+            const data = await res.json();
+            if (data && data.success) {
+                if (data.photos) renderPhotos(data.photos);
+                if (data.hvs) {
+                    currentHvsList = data.hvs;
+                    renderHvs(currentHvsList);
+                }
+                if (data.audios) renderAudios(data.audios);
+                if (data.reminders) renderReminders(data.reminders);
+                if (data.uptimeLogs) renderUptimeLogs(data.uptimeLogs);
+            }
+        } catch (e) {}
+    }
+
+    recargarEscenariosCompleto();
+    setInterval(recargarEscenariosCompleto, 10000);
+
     // 1. MANEJO DE NAVEGACIÓN FULL SCREEN (SIDEBAR & BOTTOM NAV)
     const navItems = document.querySelectorAll('.nav-item, .bottom-nav-item');
     const hubPanes = document.querySelectorAll('.hub-pane');
@@ -63,6 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (pane.id === targetHub) pane.classList.add('active');
                 else pane.classList.remove('active');
             });
+
+            recargarEscenariosCompleto();
         });
     });
 
@@ -437,7 +460,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <a href="${photo.url}" download="${photo.nombreArchivo}" class="btn-download">⬇️ Descargar Foto HD</a>
             </div>
         `;
-        photosGrid.prepend(card);
+        if (isNew) photosGrid.prepend(card);
+        else photosGrid.appendChild(card);
     }
 
     // Renderizado de Audios y Transcripciones
@@ -472,7 +496,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <audio controls src="${audio.url}" style="margin-top: 10px; width: 100%; height: 36px;"></audio>
         `;
-        audiosList.prepend(item);
+        if (isNew) audiosList.prepend(item);
+        else audiosList.appendChild(item);
     }
 
     // Renderizado y Clasificación Avanzada de Hojas de Vida (CVs)
@@ -530,7 +555,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <a href="${hv.url}" download="${hv.nombreArchivo}" target="_blank" class="btn-download" style="display: block; text-align: center; margin-top: 10px; background: #2563eb; color: #fff; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600;">📄 Abrir / Descargar Hoja de Vida</a>
             </div>
         `;
-        hvsGrid.appendChild(card);
+        if (isNew) hvsGrid.prepend(card);
+        else hvsGrid.appendChild(card);
     }
 
     function renderReminders(reminders) {
@@ -553,13 +579,14 @@ document.addEventListener('DOMContentLoaded', () => {
         item.innerHTML = `
             <div class="event-meta">
                 <span class="event-tag" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">📅 Cita Detectada</span>
-                <span>🕒 Detectado: ${rem.fechaDetec}</span>
-                <span>📌 Chat: <strong>${rem.origen}</strong></span>
-                <span>👤 ${rem.remitente}</span>
+                <span>🕒 Detectado: ${rem.fecha || rem.fechaDetec || ''} ${rem.hora || ''}</span>
+                <span>📌 Chat: <strong>${rem.grupo || rem.origen || ''}</strong></span>
+                <span>👤 ${rem.remitente || 'Contacto'}</span>
             </div>
-            <div class="event-body">${rem.mensaje}</div>
+            <div class="event-body">${rem.texto || rem.mensaje || ''}</div>
         `;
-        remindersList.prepend(item);
+        if (isNew) remindersList.prepend(item);
+        else remindersList.appendChild(item);
     }
 
     function addForwardLogToUI(log) {
