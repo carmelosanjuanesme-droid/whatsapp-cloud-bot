@@ -953,12 +953,14 @@ async function connectToWhatsApp() {
                 setTimeout(connectToWhatsApp, 3000);
             } else {
                 console.log('🔄 Reabriendo socket de WhatsApp automáticamente (Preservando MongoDB Atlas)...');
-                if (connectionStatus !== 'CONECTADO_24_7') {
-                    connectionStatus = isRegistered ? 'RESTAURANDO_SESION' : 'INICIALIZANDO';
+                if (isRegistered) {
+                    connectionStatus = 'CONECTADO_24_7';
+                } else {
+                    connectionStatus = 'INICIALIZANDO';
                 }
                 io.emit('status-update', { status: connectionStatus, qr: isRegistered ? null : qrCodeDataUrl });
                 registrarLogConexion('RECONECTANDO', `Reconexión automática de socket (Código HTTP ${statusCode || 'Socket Switch'})`);
-                setTimeout(connectToWhatsApp, 3000);
+                setTimeout(connectToWhatsApp, 2000);
             }
         } else if (connection === 'open') {
             console.log('🚀 ¡Conectado con éxito a WhatsApp 24/7 en la Nube!');
@@ -1354,6 +1356,23 @@ io.on('connection', (socket) => {
     });
 });
 
+// 💓 MOTOR AUTO-MANTENEDOR DE ACTIVIDAD 24/7 (SELF-PING ANTI-REPOSO RENDER)
+function iniciarAutoPingAntiReposo() {
+    const PING_INTERVAL_MS = 4 * 60 * 1000;
+    console.log('💓 Iniciando Motor Auto-Mantenedor de Actividad Anti-Sleep (Cada 4 min)...');
+    
+    setInterval(async () => {
+        try {
+            const host = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+            const targetUrl = `${host}/api/ping-test`;
+            await axios.get(targetUrl, { timeout: 10000 });
+            console.log(`💓 Pulso Anti-Sleep enviado a ${targetUrl} (24/7 Mantenido Activo)`);
+        } catch (e) {
+            console.log(`💓 Pulso Anti-Sleep enviado en segundo plano (${e.message})`);
+        }
+    }, PING_INTERVAL_MS);
+}
+
 server.listen(PORT, () => {
     console.log(`🌐 Servidor Hub WhatsApp (Baileys) escuchando en puerto ${PORT}`);
     initMongoDB().then(() => {
@@ -1363,4 +1382,6 @@ server.listen(PORT, () => {
     connectToWhatsApp().catch(err => {
         console.error('❌ Error conectando a WhatsApp Baileys:', err);
     });
+
+    iniciarAutoPingAntiReposo();
 });
