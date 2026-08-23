@@ -173,7 +173,7 @@ async function cargarDatosDesdeMongoDB() {
     try {
         const [photos, hvs, audios, reminders, events, msgs, uptimes] = await Promise.all([
             mongoDb.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
-            mongoDb.collection('hvs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
+            mongoDb.collection('hojas_de_vida').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
             mongoDb.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
             mongoDb.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
             mongoDb.collection('events').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
