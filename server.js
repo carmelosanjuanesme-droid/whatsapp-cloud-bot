@@ -313,7 +313,7 @@ async function transcribirAudioIA(audioFilePath) {
         try {
             const FormData = require('form-data');
             const form = new FormData();
-            form.append('file', fs.createReadStream(audioFilePath));
+            form.append('file', fs.createReadStream(audioFilePath), { filename: 'audio.ogg', contentType: 'audio/ogg' });
             form.append('model', 'whisper-large-v3-turbo');
             form.append('language', 'es');
 
@@ -754,7 +754,14 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
     if (audioMsg && !isHistoryMessage) {
         try {
             console.log(`🎙️ Nota de voz recibida de ${senderName} en ${groupName}`);
-            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            const mediaMsg = {
+                key: msg.key,
+                message: { audioMessage: audioMsg }
+            };
+            const buffer = await downloadMediaMessage(mediaMsg, 'buffer', {}, { logger: pino({ level: 'silent' }) }).catch(e => {
+                console.error('Error descargando audio:', e.message);
+                return null;
+            });
             if (buffer) {
                 const filename = `Audio_${dateStr}_${senderName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.ogg`;
                 const filePath = path.join(audiosDir, filename);
