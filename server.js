@@ -265,16 +265,18 @@ function isBase64Str(str) {
 
 // 🔒 MOTOR DE AUTENTICACIÓN ATÓMICO 100% PERSISTENTE CON CACHÉ EN MEMORIA Y RESPALDO DUAL (MAESTRO DE REGISTRO)
 async function useMongoDBAuthState(db) {
-    const collection = db.collection('baileys_atomic_auth');
+    const collection = db ? db.collection('baileys_atomic_auth') : null;
 
     // Cargar credenciales principales (Prioridad 1: Documento Maestro Registrado)
     let credsDoc = null;
-    try {
-        credsDoc = await collection.findOne({ _id: 'registered_creds_master' });
-        if (!credsDoc || !credsDoc.data) {
-            credsDoc = await collection.findOne({ _id: 'creds' });
-        }
-    } catch (e) {}
+    if (collection) {
+        try {
+            credsDoc = await collection.findOne({ _id: 'registered_creds_master' });
+            if (!credsDoc || !credsDoc.data) {
+                credsDoc = await collection.findOne({ _id: 'creds' });
+            }
+        } catch (e) {}
+    }
 
     let creds;
     if (credsDoc && credsDoc.data) {
@@ -304,7 +306,7 @@ async function useMongoDBAuthState(db) {
                 get: async (type, ids) => {
                     if (!keysCache[type]) {
                         try {
-                            const keysDoc = await collection.findOne({ _id: `keys_${type}` });
+                            const keysDoc = collection ? await collection.findOne({ _id: `keys_${type}` }) : null;
                             keysCache[type] = keysDoc && keysDoc.data ? JSON.parse(JSON.stringify(keysDoc.data), BufferJSON.reviver) : {};
                         } catch (e) {
                             keysCache[type] = {};
@@ -337,12 +339,14 @@ async function useMongoDBAuthState(db) {
                             }
                         }
 
-                        const serialized = JSON.parse(JSON.stringify(keysCache[category], BufferJSON.replacer));
-                        collection.updateOne(
-                            { _id: `keys_${category}` },
-                            { $set: { data: serialized, updatedAt: new Date() } },
-                            { upsert: true }
-                        ).catch(() => {});
+                        if (collection) {
+                            const serialized = JSON.parse(JSON.stringify(keysCache[category], BufferJSON.replacer));
+                            collection.updateOne(
+                                { _id: `keys_${category}` },
+                                { $set: { data: serialized, updatedAt: new Date() } },
+                                { upsert: true }
+                            ).catch(() => {});
+                        }
                     }
                 }
             }
@@ -353,20 +357,22 @@ async function useMongoDBAuthState(db) {
                 fs.writeFileSync(backupFile, JSON.stringify(serializedCreds));
             } catch (e) {}
 
-            await collection.updateOne(
-                { _id: 'creds' },
-                { $set: { data: serializedCreds, updatedAt: new Date() } },
-                { upsert: true }
-            ).catch(() => {});
-
-            // Si las credenciales contienen la identidad del usuario (creds.me), SELLAMOS EL DOCUMENTO MAESTRO INMUTABLE
-            if (creds && (creds.me || creds.registered)) {
+            if (collection) {
                 await collection.updateOne(
-                    { _id: 'registered_creds_master' },
-                    { $set: { data: serializedCreds, registeredAt: new Date(), phone: creds.me?.id || '' } },
+                    { _id: 'creds' },
+                    { $set: { data: serializedCreds, updatedAt: new Date() } },
                     { upsert: true }
                 ).catch(() => {});
-                console.log(`🔒 [SELLADO MAESTRO] Credenciales registradas guardadas en registered_creds_master en MongoDB Atlas (${creds.me?.id || 'Registrado'}).`);
+
+                // Si las credenciales contienen la identidad del usuario (creds.me), SELLAMOS EL DOCUMENTO MAESTRO INMUTABLE
+                if (creds && (creds.me || creds.registered)) {
+                    await collection.updateOne(
+                        { _id: 'registered_creds_master' },
+                        { $set: { data: serializedCreds, registeredAt: new Date(), phone: creds.me?.id || '' } },
+                        { upsert: true }
+                    ).catch(() => {});
+                    console.log(`🔒 [SELLADO MAESTRO] Credenciales registradas guardadas en registered_creds_master en MongoDB Atlas (${creds.me?.id || 'Registrado'}).`);
+                }
             }
         }
     };
@@ -1069,13 +1075,7 @@ async function connectToWhatsApp() {
     }
 
     const db = await initMongoDB();
-    let authState;
-    if (db) {
-        authState = await useMongoDBAuthState(db);
-    } else {
-        console.log('⚠️ MongoDB no disponible, usando fallback en disco...');
-        authState = await useMultiFileAuthState(authDir);
-    }
+    const authState = await useMongoDBAuthState(db);
 
     const { state, saveCreds } = authState;
     const isSessionRegistered = Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
