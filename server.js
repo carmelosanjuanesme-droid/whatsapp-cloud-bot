@@ -615,7 +615,7 @@ REGLAS DE RESPUESTA PARA WHATSAPP:
 
 // 📩 PROCESADOR UNIVERSAL DE MENSAJES (VIVOS E HISTÓRICOS)
 async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
-    if (!msg.message || msg.key.fromMe) return;
+    if (!msg || !msg.message) return;
 
     const fromJid = msg.key.remoteJid;
     const isGroup = fromJid.endsWith('@g.us');
@@ -738,7 +738,12 @@ async function procesarMensajeEntrante(msg, isHistoryMessage = false) {
     }
 
     // 🎙️ AUDIOS Y TRANSCRIPCIÓN IA
-    if (msg.message.audioMessage && !isHistoryMessage) {
+    const audioMsg = msg.message.audioMessage || 
+                     msg.message.ephemeralMessage?.message?.audioMessage ||
+                     msg.message.viewOnceMessage?.message?.audioMessage ||
+                     msg.message.viewOnceMessageV2?.message?.audioMessage;
+
+    if (audioMsg && !isHistoryMessage) {
         try {
             console.log(`🎙️ Nota de voz recibida de ${senderName} en ${groupName}`);
             const buffer = await downloadMediaMessage(msg, 'buffer', {});
