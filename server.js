@@ -571,28 +571,32 @@ REGLAS DE RESPUESTA PARA WHATSAPP:
 
     let respuestaIA = null;
 
-    const groqKey = process.env.GROQ_API_KEY || GROQ_API_KEY || '';
+    const groqKey = (process.env.GROQ_API_KEY || process.env.GROQ_KEY || process.env.WHISPER_KEY || GROQ_API_KEY || '').trim();
     if (groqKey) {
-        try {
-            const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-                model: 'llama-3.3-70b-versatile',
-                messages: [
-                    { role: 'system', content: promptSistema },
-                    { role: 'user', content: ordenLimpia }
-                ],
-                temperature: 0.3
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${groqKey}`,
-                    'Content-Type': 'application/json'
-                }
-            });
+        const models = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'];
+        for (const modelName of models) {
+            try {
+                const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+                    model: modelName,
+                    messages: [
+                        { role: 'system', content: promptSistema },
+                        { role: 'user', content: ordenLimpia }
+                    ],
+                    temperature: 0.3
+                }, {
+                    headers: {
+                        'Authorization': `Bearer ${groqKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
 
-            if (resp.data && resp.data.choices && resp.data.choices[0]?.message?.content) {
-                respuestaIA = resp.data.choices[0].message.content.trim();
+                if (resp.data && resp.data.choices && resp.data.choices[0]?.message?.content) {
+                    respuestaIA = resp.data.choices[0].message.content.trim();
+                    break;
+                }
+            } catch (e) {
+                console.error(`Error invocando modelo Groq ${modelName}:`, e.message);
             }
-        } catch (e) {
-            console.error('Error invocando Groq IA en comando WhatsApp:', e.message);
         }
     }
 
