@@ -109,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     checkStatusHTTP();
-    setInterval(checkStatusHTTP, 3000);
+    setInterval(checkStatusHTTP, 1000);
 
     // Escuchar Eventos en Tiempo Real
     socket.on('new-photo', (photo) => addPhotoToUI(photo, true));
