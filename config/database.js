@@ -103,26 +103,35 @@ async function cargarDatosDesdeMongoDB() {
     try {
         const db = await initMongoDB();
         if (db) {
-            const [photos, hvs, audios, reminders, events, msgs, uptimes] = await Promise.all([
+            const [photos1, photos2, hvs1, hvs2, audios1, audios2, reminders1, reminders2, events, msgs, uptimes] = await Promise.all([
                 db.collection('photos').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+                db.collection('fotos').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
                 db.collection('hojas_de_vida').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
+                db.collection('hvs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => []),
                 db.collection('audios').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+                db.collection('notas_voz').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
                 db.collection('reminders').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
+                db.collection('citas').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
                 db.collection('events').find({}).sort({ id: -1 }).limit(100).toArray().catch(() => []),
                 db.collection('messages').find({}).sort({ id: -1 }).limit(500).toArray().catch(() => []),
                 db.collection('uptime_logs').find({}).sort({ id: -1 }).limit(200).toArray().catch(() => [])
             ]);
 
-            if (photos && photos.length > 0) dbState.savedPhotos = photos;
-            if (hvs && hvs.length > 0) dbState.savedHvs = hvs;
-            if (audios && audios.length > 0) dbState.savedAudios = audios;
-            if (reminders && reminders.length > 0) dbState.capturedReminders = reminders;
+            const mergedPhotos = [...(photos1 || []), ...(photos2 || [])];
+            const mergedHvs = [...(hvs1 || []), ...(hvs2 || [])];
+            const mergedAudios = [...(audios1 || []), ...(audios2 || [])];
+            const mergedReminders = [...(reminders1 || []), ...(reminders2 || [])];
+
+            if (mergedPhotos.length > 0) dbState.savedPhotos = mergedPhotos;
+            if (mergedHvs.length > 0) dbState.savedHvs = mergedHvs;
+            if (mergedAudios.length > 0) dbState.savedAudios = mergedAudios;
+            if (mergedReminders.length > 0) dbState.capturedReminders = mergedReminders;
             if (events && events.length > 0) dbState.lastEvents = events;
             if (msgs && msgs.length > 0) dbState.messageHistoryStore = msgs;
             if (uptimes && uptimes.length > 0) dbState.uptimeLogs = uptimes;
 
             guardarMasterStoreLocal();
-            console.log(`🍃 Datos persistentes sincronizados desde MongoDB Atlas: ${dbState.savedPhotos.length} fotos, ${dbState.savedHvs.length} HVs, ${dbState.savedAudios.length} audios, ${dbState.capturedReminders.length} citas.`);
+            console.log(`🍃 Datos persistentes sincronizados (con alias) desde MongoDB Atlas: ${dbState.savedPhotos.length} fotos, ${dbState.savedHvs.length} HVs, ${dbState.savedAudios.length} audios, ${dbState.capturedReminders.length} citas.`);
         }
     } catch (e) {
         console.error('Error restaurando datos desde MongoDB Atlas:', e.message);
