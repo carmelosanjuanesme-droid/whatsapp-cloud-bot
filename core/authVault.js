@@ -37,6 +37,17 @@ function restoreAuthDirFromMap(dir, map) {
 async function sincronizarAuthDirConMongoDB(db, dir) {
     if (!db) return;
     try {
+        const credsFile = path.join(dir, 'creds.json');
+        if (!fs.existsSync(credsFile)) return;
+
+        const credsContent = fs.readFileSync(credsFile, 'utf8');
+        const isRegisteredInCreds = credsContent.includes('"registered":true') || credsContent.includes('"me":{') || credsContent.includes('"me": {');
+
+        if (!isRegisteredInCreds) {
+            console.log('⏳ Omitiendo respaldo de authDir: Sesión aún no registrada.');
+            return;
+        }
+
         const collection = db.collection('baileys_atomic_auth');
         const map = dumpAuthDirToMap(dir);
         if (Object.keys(map).length > 0) {
@@ -45,8 +56,11 @@ async function sincronizarAuthDirConMongoDB(db, dir) {
                 { $set: { map: map, updatedAt: new Date() } },
                 { upsert: true }
             );
+            console.log(`🔒 [SELLADO MAESTRO] Bóveda de credenciales respaldada exitosamente en MongoDB Atlas (${Object.keys(map).length} llaves).`);
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error('Error respaldando authDir en MongoDB Atlas:', e.message);
+    }
 }
 
 async function cargarAuthDirDesdeMongoDB(db, dir) {
@@ -58,8 +72,14 @@ async function cargarAuthDirDesdeMongoDB(db, dir) {
             const collection = db.collection('baileys_atomic_auth');
             const doc = await collection.findOne({ _id: 'baileys_auth_dir_master' });
             if (doc && doc.map && Object.keys(doc.map).length > 0) {
-                restoreAuthDirFromMap(dir, doc.map);
-                if (fs.existsSync(path.join(dir, 'creds.json'))) return;
+                const credsStr = doc.map['creds.json'] || '';
+                if (credsStr.includes('"registered":true') || credsStr.includes('"me":{') || credsStr.includes('"me": {')) {
+                    restoreAuthDirFromMap(dir, doc.map);
+                    if (fs.existsSync(path.join(dir, 'creds.json'))) {
+                        console.log(`📦 Bóveda registrada restaurada exitosamente desde MongoDB Atlas.`);
+                        return;
+                    }
+                }
             }
         } catch (e) {}
     }
