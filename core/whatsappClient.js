@@ -304,32 +304,30 @@ async function connectToWhatsApp() {
         const { connection, lastDisconnect, qr } = update;
         const isRegistered = fs.existsSync(credsFile) && Boolean(state?.creds?.registered || state?.creds?.me?.id || state?.creds?.me);
 
-        if (qr && !isRegistered) {
-            console.log('📌 Código QR generado. Listo para escanear.');
-            dbState.connectionStatus = 'ESPERANDO_QR';
-            try {
-                dbState.qrCodeDataUrl = await qrcode.toDataURL(qr);
-                if (ioInstance) ioInstance.emit('status-update', { status: dbState.connectionStatus, qr: dbState.qrCodeDataUrl });
-                registrarLogConexion('ESPERANDO_QR', 'Código QR generado y listo para escaneo');
-            } catch (err) {
-                console.error('Error convirtiendo QR a DataURL:', err);
+        if (qr) {
+            if (!isRegistered) {
+                console.log('📌 Código QR generado. Listo para escanear.');
+                dbState.connectionStatus = 'ESPERANDO_QR';
+                try {
+                    dbState.qrCodeDataUrl = await qrcode.toDataURL(qr);
+                    if (ioInstance) ioInstance.emit('status-update', { status: dbState.connectionStatus, qr: dbState.qrCodeDataUrl });
+                    registrarLogConexion('ESPERANDO_QR', 'Código QR generado y listo para escaneo');
+                } catch (err) {
+                    console.error('Error convirtiendo QR a DataURL:', err);
+                }
             }
-        } else if (qr && isRegistered) {
-            console.log('🔄 Ignorando QR temporal: La sesión ya está registrada en MongoDB Atlas. Restaurando automáticamente...');
-            dbState.connectionStatus = 'RESTAURANDO_SESION';
-            if (ioInstance) ioInstance.emit('status-update', { status: dbState.connectionStatus, qr: null });
         }
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const isExplicitLogout = statusCode === DisconnectReason.loggedOut;
+            const isExplicitLogout = statusCode === DisconnectReason.loggedOut || statusCode === 401;
 
             console.log(`⚠️ Conexión de WhatsApp cerrada. Código: ${statusCode}. LoggedOut: ${isExplicitLogout}. Registered: ${isRegistered}`);
 
-            if (isExplicitLogout && !isRegistered) {
-                console.log('🧹 Sesión desvinculada explícitamente por WhatsApp. Limpiando credenciales en MongoDB Atlas...');
+            if (isExplicitLogout) {
+                console.log('🧹 Sesión desvinculada por WhatsApp (401/LoggedOut). Reseteando llaves caducadas...');
                 try {
-                    fs.rmSync(authDir, { recursive: true, force: true });
+                    if (fs.existsSync(authDir)) fs.rmSync(authDir, { recursive: true, force: true });
                     if (db) {
                         await db.collection('baileys_atomic_auth').deleteMany({});
                     }
@@ -337,7 +335,7 @@ async function connectToWhatsApp() {
                 dbState.connectionStatus = 'ESPERANDO_QR';
                 dbState.qrCodeDataUrl = null;
                 if (ioInstance) ioInstance.emit('status-update', { status: dbState.connectionStatus, qr: null });
-                registrarLogConexion('DESCONECTADO', 'Sesión desvinculada por WhatsApp. Credenciales reseteadas.');
+                registrarLogConexion('DESCONECTADO', 'Sesión desvinculada por WhatsApp. Credenciales caducadas reseteadas.');
                 setTimeout(connectToWhatsApp, 3000);
             } else {
                 console.log('🔄 Reabriendo socket de WhatsApp automáticamente (Preservando MongoDB Atlas)...');
