@@ -34,6 +34,16 @@ function restoreAuthDirFromMap(dir, map) {
     }
 }
 
+function checkIsRegisteredCreds(credsContent) {
+    if (!credsContent || typeof credsContent !== 'string') return false;
+    try {
+        const parsed = JSON.parse(credsContent);
+        return Boolean(parsed && (parsed.registered || parsed.me?.id || parsed.me));
+    } catch (e) {
+        return credsContent.includes('"me"') || credsContent.includes('"registered":true');
+    }
+}
+
 async function sincronizarAuthDirConMongoDB(db, dir) {
     if (!db) return;
     try {
@@ -41,9 +51,7 @@ async function sincronizarAuthDirConMongoDB(db, dir) {
         if (!fs.existsSync(credsFile)) return;
 
         const credsContent = fs.readFileSync(credsFile, 'utf8');
-        const isRegisteredInCreds = credsContent.includes('"registered":true') || credsContent.includes('"me":{') || credsContent.includes('"me": {');
-
-        if (!isRegisteredInCreds) {
+        if (!checkIsRegisteredCreds(credsContent)) {
             console.log('⏳ Omitiendo respaldo de authDir: Sesión aún no registrada.');
             return;
         }
@@ -73,7 +81,7 @@ async function cargarAuthDirDesdeMongoDB(db, dir) {
             const doc = await collection.findOne({ _id: 'baileys_auth_dir_master' });
             if (doc && doc.map && Object.keys(doc.map).length > 0) {
                 const credsStr = doc.map['creds.json'] || '';
-                if (credsStr.includes('"registered":true') || credsStr.includes('"me":{') || credsStr.includes('"me": {')) {
+                if (checkIsRegisteredCreds(credsStr)) {
                     restoreAuthDirFromMap(dir, doc.map);
                     if (fs.existsSync(path.join(dir, 'creds.json'))) {
                         console.log(`📦 Bóveda registrada restaurada exitosamente desde MongoDB Atlas.`);
